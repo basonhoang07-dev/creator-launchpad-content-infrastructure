@@ -1,0 +1,57 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+html, body {
+  padding: 0;
+  margin: 0;
+  background: #0A0A0A;
+}
+
+* { box-sizing: border-box; }
+.cl-root { font-family: 'Inter', sans-serif; color: #F2F2F0; }
+.cl-display { font-family: 'Space Grotesk', sans-serif; }
+.cl-mono { font-family: 'JetBrains Mono', monospace; }
+.cl-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+.cl-scroll::-webkit-scrollbar-track { background: transparent; }
+.cl-scroll::-webkit-scrollbar-thumb { background: #262626; border-radius: 4px; }
+input, textarea, select { font-family: 'Inter', sans-serif; }
+input:focus, textarea:focus, select:focus, button:focus-visible { outline: 2px solid #9B6EF3; outline-offset: 1px; }
+.cl-spin { animation: cl-spin-kf 0.8s linear infinite; }
+@keyframes cl-spin-kf { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+/* ---------- Mobile responsive layer ---------- */
+.cl-mobile-topbar { display: none; }
+.cl-sidebar-overlay { display: none; }
+
+@media (max-width: 860px) {
+  .cl-mobile-topbar { display: flex !important; }
+
+  /* Sidebar becomes an off-canvas drawer instead of a permanent 232px column */
+  .cl-sidebar {
+    position: fixed !important;
+    top: 0; left: 0; height: 100vh;
+    z-index: 200;
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+    box-shadow: 4px 0 24px rgba(0,0,0,0.4);
+  }
+  .cl-sidebar.cl-sidebar-open { transform: translateX(0); }
+  .cl-sidebar-overlay.cl-sidebar-open {
+    display: block !important;
+    position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 199;
+  }
+  .cl-main-scroll { padding: 16px !important; padding-top: 72px !important; }
+  .cl-sidebar-close { display: flex !important; }
+
+  /* Every CSS-grid layout in the app collapses to one column on narrow screens —
+     this single rule covers dozens of pages without touching each one individually. */
+  [style*="grid-template-columns"] { grid-template-columns: 1fr !important; }
+
+  /* Exception: the calendar's day-of-week grid must stay 7 columns — it scrolls
+     horizontally instead of collapsing, or it stops being a calendar. */
+  .cl-calendar-week-grid[style*="grid-template-columns"] { grid-template-columns: repeat(7, 1fr) !important; }
+
+  /* Safety net for anything that assumes desktop width and could otherwise overflow */
+  .cl-hscroll-mobile { overflow-x: auto; }
+
+  h1.cl-display { font-size: 24px !important; }
+}
