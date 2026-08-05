@@ -796,10 +796,25 @@ function ContentCalendarInner({ clientId }: { clientId: string }) {
 
           <div style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 10, padding: 12, display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
             <Folder size={16} color={C.accentLight} />
-            <div style={{ fontSize: 12.5, color: C.textMuted, flex: 1 }}>
-              Drive folder: <span className="cl-mono" style={{ color: C.text }}>{profile.name.split(" ")[0]}'s Portal / {activeEntry.brand} Content Tracker / {activeEntry.title}</span>
-            </div>
-            <ExternalLink size={13} color={C.textFaint} />
+            {activeEntry.driveFolderUrl ? (
+              <>
+                <a
+                  href={activeEntry.driveFolderUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ fontSize: 12.5, color: C.text, flex: 1, textDecoration: "none" }}
+                >
+                  Drive folder: <span className="cl-mono" style={{ color: C.accentLight }}>File For Editor / {activeEntry.brand} / {activeEntry.title}</span>
+                </a>
+                <ExternalLink size={13} color={C.textFaint} />
+              </>
+            ) : data.driveConnected ? (
+              <div style={{ fontSize: 12.5, color: C.textFaint, flex: 1 }}>No Drive folder for this script yet (it's created automatically for new scripts going forward).</div>
+            ) : (
+              <div style={{ fontSize: 12.5, color: C.textFaint, flex: 1 }}>
+                No Drive folder yet — <a href="/integrations" style={{ color: C.accentLight }}>connect Google Drive</a> to auto-create one for every script.
+              </div>
+            )}
           </div>
 
           <div style={{ display: "flex", gap: 8 }}>

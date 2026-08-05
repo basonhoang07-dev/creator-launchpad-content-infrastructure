@@ -1,8 +1,14 @@
 "use client";
 
 // app/(dashboard)/integrations/page.tsx — ported from the prototype's IntegrationsPage.
+//
+// 'drive' is the one real OAuth integration here (see lib/google-drive.ts) —
+// "Connect" redirects to Google's consent screen instead of just flipping a
+// DB flag like the other cards still do. 'gcal' remains the old flag-only
+// stub; only Drive got wired up to a real API.
 
 import React, { useCallback, useEffect, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { ExternalLink, Plug } from "lucide-react";
 import { C } from "@/lib/theme";
 import { Card, Button, SectionHeader } from "@/components/ui";
@@ -18,7 +24,10 @@ export default function IntegrationsPage() {
 
 function IntegrationsInner({ clientId }: { clientId: string }) {
   const { showToast } = useToast();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [integrations, setIntegrations] = useState<IntegrationMeta[] | null>(null);
+  const [disconnecting, setDisconnecting] = useState(false);
 
   const reload = useCallback(async () => {
     setIntegrations(await fetchIntegrations(createClient(), clientId));
@@ -27,6 +36,21 @@ function IntegrationsInner({ clientId }: { clientId: string }) {
   useEffect(() => {
     reload();
   }, [reload]);
+
+  // /api/oauth/google/callback redirects back here with one of these set.
+  useEffect(() => {
+    const connectedEmail = searchParams.get("drive_connected");
+    const driveError = searchParams.get("drive_error");
+    if (connectedEmail) {
+      showToast(`Google Drive connected — ${connectedEmail}`, "success");
+      reload();
+      router.replace("/integrations");
+    } else if (driveError) {
+      showToast(driveError);
+      router.replace("/integrations");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   async function toggle(id: string) {
     const current = integrations!.find((i) => i.id === id)!;
@@ -39,6 +63,27 @@ function IntegrationsInner({ clientId }: { clientId: string }) {
     }
   }
 
+  function connectDrive() {
+    window.location.href = `/api/oauth/google/start?clientId=${encodeURIComponent(clientId)}`;
+  }
+
+  async function disconnectDrive() {
+    setDisconnecting(true);
+    try {
+      const res = await fetch("/api/drive/disconnect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error || "Couldn't disconnect");
+      reload();
+    } catch (err) {
+      showToast(toastMessage(err, "Couldn't disconnect Google Drive — try again."));
+    } finally {
+      setDisconnecting(false);
+    }
+  }
+
   if (!integrations) return <div style={{ color: C.textMuted, fontSize: 14 }}>Loading…</div>;
 
   return (
@@ -47,18 +92,23 @@ function IntegrationsInner({ clientId }: { clientId: string }) {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14 }}>
         {integrations.map((i) => {
           const isExternal = EXTERNAL_TOOL_URLS[i.id];
+          const isDrive = i.id === "drive";
           return (
             <Card key={i.id} style={{ display: "flex", alignItems: "center", gap: 14 }}>
               <div style={{ width: 40, height: 40, borderRadius: 10, background: i.connected || isExternal ? C.accentDim : C.surface2, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                 <Plug size={17} color={i.connected || isExternal ? C.accentLight : C.textFaint} />
               </div>
-              <div style={{ flex: 1 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 600, fontSize: 14 }}>{i.name}</div>
-                <div style={{ fontSize: 12, color: C.textMuted }}>{i.desc}</div>
+                <div style={{ fontSize: 12, color: C.textMuted }}>{isDrive && i.connected && i.connectedEmail ? `Connected as ${i.connectedEmail}` : i.desc}</div>
               </div>
               {isExternal ? (
                 <Button size="sm" variant="secondary" onClick={() => window.open(EXTERNAL_TOOL_URLS[i.id], "_blank")}>
                   <ExternalLink size={13} /> Open
+                </Button>
+              ) : isDrive ? (
+                <Button size="sm" variant={i.connected ? "secondary" : "primary"} disabled={disconnecting} onClick={i.connected ? disconnectDrive : connectDrive}>
+                  {i.connected ? (disconnecting ? "Disconnecting..." : "Disconnect") : "Connect"}
                 </Button>
               ) : (
                 <Button size="sm" variant={i.connected ? "secondary" : "primary"} onClick={() => toggle(i.id)}>

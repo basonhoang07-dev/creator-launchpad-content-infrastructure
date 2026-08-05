@@ -15,7 +15,11 @@ import { NextResponse, type NextRequest } from "next/server";
 // server), so the very first request here looks unauthenticated to
 // middleware even though the client is about to establish a real session
 // from that fragment a moment later.
-const PUBLIC_PATHS = ["/login", "/set-password"];
+//
+// /privacy has to be public because it's the URL submitted to Google's OAuth
+// verification review (Cloud Console → OAuth consent screen → Privacy policy
+// link) — their reviewer, and anyone else, needs to load it while signed out.
+const PUBLIC_PATHS = ["/login", "/set-password", "/privacy"];
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request: { headers: request.headers } });

@@ -67,6 +67,12 @@ create table retainer_campaigns (
   min_posts int default 0,
   max_posts int default 0,
   session_capacity int default 0,
+  -- Cached Google Drive folder for this campaign (under the client's own
+  -- "File For Editor" root — see google_drive_connections below), so each
+  -- new script only has to look this up once instead of searching Drive
+  -- for it on every script creation.
+  drive_folder_id text,
+  drive_folder_url text,
   created_at timestamptz default now()
 );
 
@@ -96,6 +102,11 @@ create table calendar_entries (
   posted boolean default false,
   view_count int default 0,
   bonus_logged boolean default false,
+  -- Set once by app/api/drive/create-script-folder after a real Drive
+  -- folder gets created for this script (client_id must have a row in
+  -- google_drive_connections) — null until then, and permanently null if
+  -- the client never connects Drive.
+  drive_folder_url text,
   created_at timestamptz default now()
 );
 
@@ -234,8 +245,36 @@ create table integrations (
   client_id uuid references clients(id) not null,
   integration_key text not null, -- 'drive' | 'gcal' | 'bento' | 'sandcastles' | 'warmr' | 'fathom'
   connected boolean default false,
+  -- Only populated for 'drive' (mirrors google_drive_connections.google_email)
+  -- so the Integrations page can show "Connected as x@gmail.com" without a
+  -- service-role lookup — this table is readable by the client themselves,
+  -- the token table below deliberately is not.
+  connected_email text,
   unique (client_id, integration_key)
 );
+
+-- ---------- Google Drive connections (per-client OAuth) ----------
+-- One real Google OAuth connection per client, used to auto-create script
+-- folders in THEIR OWN Drive (not a shared service-account Drive — a service
+-- account has no storage quota of its own on a personal Gmail account, so
+-- writing into a folder it doesn't own fails; a client's own OAuth grant
+-- avoids that entirely and costs nothing extra). Deliberately NO RLS
+-- policies at all: this table is never read with the anon/authenticated key,
+-- only ever via the service-role client from app/api/oauth/google/* and
+-- app/api/drive/* — same lockdown as a webhook secret, because refresh_token
+-- is a long-lived credential for the client's real Google account.
+create table google_drive_connections (
+  client_id uuid primary key references clients(id) on delete cascade,
+  google_email text not null,
+  refresh_token text not null,
+  access_token text,
+  access_token_expires_at timestamptz,
+  -- Cached id of the "File For Editor" folder at the root of their Drive,
+  -- found-or-created on first connect.
+  root_folder_id text,
+  created_at timestamptz default now()
+);
+alter table google_drive_connections enable row level security;
 
 -- ---------- AI usage tracking ----------
 -- One row per successful Claude API call. lib/auth.ts sums rows for the

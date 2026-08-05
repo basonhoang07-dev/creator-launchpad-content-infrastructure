@@ -34,6 +34,7 @@ export interface CalendarEntry {
   posted: boolean;
   viewCount: number;
   bonusLogged: boolean;
+  driveFolderUrl: string | null;
   comments: Comment[];
 }
 
@@ -82,6 +83,7 @@ function mapEntryRow(row: any): CalendarEntry {
     posted: !!row.posted,
     viewCount: row.view_count || 0,
     bonusLogged: !!row.bonus_logged,
+    driveFolderUrl: row.drive_folder_url || null,
     comments: (row.calendar_comments || [])
       .map((c: any): Comment => ({ id: c.id, authorName: c.author_name, authorRole: c.author_role, text: c.body, createdAt: c.created_at }))
       .sort((a: Comment, b: Comment) => a.createdAt.localeCompare(b.createdAt)),
@@ -115,6 +117,8 @@ export interface CalendarPageData {
   editors: Editor[];
   brands: string[];
   gcalConnected: boolean;
+  driveConnected: boolean;
+  driveConnectedEmail: string | null;
 }
 
 export async function fetchCalendarPageData(supabase: SupabaseClient, clientId: string): Promise<CalendarPageData> {
@@ -140,7 +144,7 @@ export async function fetchCalendarPageData(supabase: SupabaseClient, clientId: 
       .eq("role", "VA/Editor")
       .eq("status", "approved")
       .eq("account_client_access.client_id", clientId),
-    supabase.from("integrations").select("integration_key, connected").eq("client_id", clientId).eq("integration_key", "gcal").maybeSingle(),
+    supabase.from("integrations").select("integration_key, connected, connected_email").eq("client_id", clientId).in("integration_key", ["gcal", "drive"]),
   ]);
 
   const campaigns: Campaign[] = (campaignRows || []).map((row: any) => ({
@@ -179,7 +183,9 @@ export async function fetchCalendarPageData(supabase: SupabaseClient, clientId: 
     trash,
     editors: (editorRows || []).map((r: any) => ({ id: r.id, name: r.name })),
     brands: Array.from(new Set(campaigns.map((c) => c.brand))),
-    gcalConnected: !!(integrationRows as any)?.connected,
+    gcalConnected: !!(integrationRows || []).find((r: any) => r.integration_key === "gcal")?.connected,
+    driveConnected: !!(integrationRows || []).find((r: any) => r.integration_key === "drive")?.connected,
+    driveConnectedEmail: (integrationRows || []).find((r: any) => r.integration_key === "drive")?.connected_email || null,
   };
 }
 
@@ -198,6 +204,24 @@ const emptyEntryFields = {
   bonus_logged: false,
 };
 
+// Best-effort — a Drive hiccup (not connected, expired grant, API error)
+// must never block script creation itself, so failures just leave
+// driveFolderUrl null instead of throwing.
+async function requestDriveFolder(entryId: string): Promise<string | null> {
+  try {
+    const res = await fetch("/api/drive/create-script-folder", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ entryId }),
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    return json.url || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function insertEntry(
   supabase: SupabaseClient,
   clientId: string,
@@ -209,7 +233,9 @@ export async function insertEntry(
     .select()
     .single();
   if (error) throw error;
-  return mapEntryRow({ ...data, calendar_comments: [] });
+  const entry = mapEntryRow({ ...data, calendar_comments: [] });
+  const driveFolderUrl = await requestDriveFolder(entry.id);
+  return driveFolderUrl ? { ...entry, driveFolderUrl } : entry;
 }
 
 const patchToColumns: Record<string, string> = {
@@ -388,7 +414,9 @@ export async function insertRepeatEntry(supabase: SupabaseClient, clientId: stri
     .select()
     .single();
   if (error) throw error;
-  return mapEntryRow({ ...data, calendar_comments: [] });
+  const created = mapEntryRow({ ...data, calendar_comments: [] });
+  const driveFolderUrl = await requestDriveFolder(created.id);
+  return driveFolderUrl ? { ...created, driveFolderUrl } : created;
 }
 
 // ---------- Availability blocks ----------
@@ -433,18 +461,27 @@ export async function materializeDueTemplates(supabase: SupabaseClient, clientId
   const due = templates.filter((t) => t.nextDue <= today);
   if (due.length === 0) return false;
 
-  await Promise.all(
+  const created = await Promise.all(
     due.map((t) =>
-      supabase.from("calendar_entries").insert({
-        client_id: clientId,
-        brand: t.brand,
-        title: `${t.titleBase} (${t.nextDue})`,
-        format: t.format,
-        ...emptyEntryFields,
-      })
+      supabase
+        .from("calendar_entries")
+        .insert({
+          client_id: clientId,
+          brand: t.brand,
+          title: `${t.titleBase} (${t.nextDue})`,
+          format: t.format,
+          ...emptyEntryFields,
+        })
+        .select("id")
+        .single()
     )
   );
   await Promise.all(due.map((t) => supabase.from("templates").update({ next_due: nextOccurrence(t.nextDue, t.freq) }).eq("id", t.id)));
+  // Fire-and-forget — these materialize silently on page load, so a Drive
+  // hiccup here shouldn't hold up rendering the calendar.
+  created.forEach((r) => {
+    if (r.data?.id) requestDriveFolder(r.data.id);
+  });
   return true;
 }
 

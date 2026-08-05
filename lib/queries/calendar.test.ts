@@ -21,6 +21,7 @@ function entry(overrides: Partial<CalendarEntry>): CalendarEntry {
     posted: false,
     viewCount: 0,
     bonusLogged: false,
+    driveFolderUrl: null,
     comments: [],
     ...overrides,
   };

@@ -11,9 +11,10 @@ export interface IntegrationMeta {
   name: string;
   desc: string;
   connected: boolean;
+  connectedEmail: string | null;
 }
 
-const INTEGRATION_DEFS: Omit<IntegrationMeta, "connected">[] = [
+const INTEGRATION_DEFS: Omit<IntegrationMeta, "connected" | "connectedEmail">[] = [
   { id: "drive", name: "Google Drive", desc: "Auto-creates folders for scripted content" },
   { id: "gcal", name: "Google Calendar", desc: "Syncs your availability so content only gets scheduled when you're free" },
   { id: "bento", name: "Bento", desc: "Brand outreach — external tool" },
@@ -30,9 +31,13 @@ export const EXTERNAL_TOOL_URLS: Record<string, string> = {
 };
 
 export async function fetchIntegrations(supabase: SupabaseClient, clientId: string): Promise<IntegrationMeta[]> {
-  const { data } = await supabase.from("integrations").select("integration_key, connected").eq("client_id", clientId);
-  const byKey = new Map((data || []).map((r) => [r.integration_key, r.connected]));
-  return INTEGRATION_DEFS.map((def) => ({ ...def, connected: byKey.has(def.id) ? !!byKey.get(def.id) : !!DEFAULT_CONNECTED[def.id] }));
+  const { data } = await supabase.from("integrations").select("integration_key, connected, connected_email").eq("client_id", clientId);
+  const byKey = new Map((data || []).map((r) => [r.integration_key, r]));
+  return INTEGRATION_DEFS.map((def) => ({
+    ...def,
+    connected: byKey.has(def.id) ? !!byKey.get(def.id)!.connected : !!DEFAULT_CONNECTED[def.id],
+    connectedEmail: byKey.get(def.id)?.connected_email || null,
+  }));
 }
 
 export async function toggleIntegration(supabase: SupabaseClient, clientId: string, id: string, connected: boolean) {

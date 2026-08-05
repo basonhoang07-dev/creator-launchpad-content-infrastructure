@@ -36,6 +36,7 @@ function mapEntryRow(row: any): CalendarEntry {
     posted: !!row.posted,
     viewCount: row.view_count || 0,
     bonusLogged: !!row.bonus_logged,
+    driveFolderUrl: row.drive_folder_url || null,
     comments: [],
   };
 }
