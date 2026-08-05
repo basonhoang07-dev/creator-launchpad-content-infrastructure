@@ -125,11 +125,11 @@ async function findOrCreateFolder(accessToken: string, name: string, parentId: s
 
 // Ensures "File For Editor / {campaign brand} / {script title}" exists in
 // this client's own Drive, creating whichever levels don't exist yet, and
-// returns the new script-level folder's shareable link — or null if this
-// client has never connected Drive (a safe no-op, not an error). Caches the
-// root and per-campaign folder ids so repeat scripts under the same
+// returns the new script-level folder's id + shareable link — or null if
+// this client has never connected Drive (a safe no-op, not an error). Caches
+// the root and per-campaign folder ids so repeat scripts under the same
 // client+brand don't re-search Drive every time.
-export async function ensureScriptFolder(clientId: string, brand: string, scriptTitle: string): Promise<string | null> {
+export async function ensureScriptFolder(clientId: string, brand: string, scriptTitle: string): Promise<{ id: string; url: string } | null> {
   const conn = await getValidAccessToken(clientId);
   if (!conn) return null;
   const admin = createAdminSupabaseClient();
@@ -158,7 +158,23 @@ export async function ensureScriptFolder(clientId: string, brand: string, script
     method: "POST",
     body: JSON.stringify({ name: scriptTitle, mimeType: "application/vnd.google-apps.folder", parents: [campaignFolderId] }),
   });
-  return scriptFolder.webViewLink as string;
+  return { id: scriptFolder.id as string, url: scriptFolder.webViewLink as string };
+}
+
+// Moves a script's Drive folder to Drive's own trash (recoverable by the
+// client from within Drive for ~30 days, same as dragging it to trash by
+// hand) rather than permanently destroying it — a calendar entry being
+// permanently deleted in this app is not sufficient reason to make real
+// uploaded footage unrecoverable. Silently no-ops if the client has
+// disconnected Drive since, or the folder was already removed by hand.
+export async function trashDriveFolder(clientId: string, folderId: string): Promise<void> {
+  const conn = await getValidAccessToken(clientId);
+  if (!conn) return;
+  try {
+    await driveRequest(conn.accessToken, `/${folderId}`, { method: "PATCH", body: JSON.stringify({ trashed: true }) });
+  } catch {
+    // Already gone, or the client revoked access — nothing more to do.
+  }
 }
 
 export async function disconnectDrive(clientId: string) {

@@ -197,6 +197,45 @@ export function Modal({
   );
 }
 
+// Shared "are you sure" gate for destructive actions — the app has none of
+// these today (native confirm() is deliberately avoided elsewhere for
+// looking inconsistent with the rest of the UI), so this is the one place
+// to reuse rather than hand-rolling a confirm state per delete button.
+export function ConfirmModal({
+  title,
+  body,
+  confirmLabel = "Delete",
+  onConfirm,
+  onClose,
+}: {
+  title: string;
+  body: React.ReactNode;
+  confirmLabel?: string;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <Modal title={title} onClose={onClose} width={420}>
+      <div style={{ fontSize: 13.5, color: C.textMuted, lineHeight: 1.6, marginBottom: 20 }}>{body}</div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <Button variant="secondary" style={{ flex: 1, justifyContent: "center" }} onClick={onClose}>
+          Cancel
+        </Button>
+        <Button
+          variant="danger"
+          style={{ flex: 1, justifyContent: "center", background: C.danger, color: "#fff" }}
+          onClick={() => {
+            onConfirm();
+            onClose();
+          }}
+        >
+          {confirmLabel}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
 export function EmptyState({
   icon: Icon,
   text,

@@ -34,6 +34,7 @@ export interface CalendarEntry {
   posted: boolean;
   viewCount: number;
   bonusLogged: boolean;
+  driveFolderId: string | null;
   driveFolderUrl: string | null;
   comments: Comment[];
 }
@@ -83,6 +84,7 @@ function mapEntryRow(row: any): CalendarEntry {
     posted: !!row.posted,
     viewCount: row.view_count || 0,
     bonusLogged: !!row.bonus_logged,
+    driveFolderId: row.drive_folder_id || null,
     driveFolderUrl: row.drive_folder_url || null,
     comments: (row.calendar_comments || [])
       .map((c: any): Comment => ({ id: c.id, authorName: c.author_name, authorRole: c.author_role, text: c.body, createdAt: c.created_at }))
@@ -206,8 +208,8 @@ const emptyEntryFields = {
 
 // Best-effort — a Drive hiccup (not connected, expired grant, API error)
 // must never block script creation itself, so failures just leave
-// driveFolderUrl null instead of throwing.
-async function requestDriveFolder(entryId: string): Promise<string | null> {
+// driveFolderId/Url null instead of throwing.
+async function requestDriveFolder(entryId: string): Promise<{ id: string; url: string } | null> {
   try {
     const res = await fetch("/api/drive/create-script-folder", {
       method: "POST",
@@ -216,7 +218,7 @@ async function requestDriveFolder(entryId: string): Promise<string | null> {
     });
     if (!res.ok) return null;
     const json = await res.json();
-    return json.url || null;
+    return json.id && json.url ? { id: json.id, url: json.url } : null;
   } catch {
     return null;
   }
@@ -234,8 +236,8 @@ export async function insertEntry(
     .single();
   if (error) throw error;
   const entry = mapEntryRow({ ...data, calendar_comments: [] });
-  const driveFolderUrl = await requestDriveFolder(entry.id);
-  return driveFolderUrl ? { ...entry, driveFolderUrl } : entry;
+  const folder = await requestDriveFolder(entry.id);
+  return folder ? { ...entry, driveFolderId: folder.id, driveFolderUrl: folder.url } : entry;
 }
 
 const patchToColumns: Record<string, string> = {
@@ -287,6 +289,8 @@ export async function deleteEntry(supabase: SupabaseClient, entry: CalendarEntry
     posted: entry.posted,
     view_count: entry.viewCount,
     bonus_logged: entry.bonusLogged,
+    drive_folder_id: entry.driveFolderId,
+    drive_folder_url: entry.driveFolderUrl,
   };
   const { error: insertError } = await supabase.from("calendar_trash").insert({ original_entry: row });
   if (insertError) throw insertError;
@@ -313,13 +317,31 @@ export async function restoreEntry(supabase: SupabaseClient, trashId: string, en
     posted: entry.posted,
     view_count: entry.viewCount,
     bonus_logged: entry.bonusLogged,
+    drive_folder_id: entry.driveFolderId,
+    drive_folder_url: entry.driveFolderUrl,
   });
   if (insertError) throw insertError;
   const { error: deleteError } = await supabase.from("calendar_trash").delete().eq("id", trashId);
   if (deleteError) throw deleteError;
 }
 
-export async function deleteEntryForever(supabase: SupabaseClient, trashId: string) {
+// Trashes the entry's Drive folder (if it has one — see lib/google-drive.ts's
+// trashDriveFolder for why that moves it to Drive's own trash rather than
+// destroying it) before permanently removing the calendar_trash row itself.
+// Best-effort on the Drive side — a Drive hiccup shouldn't block the user
+// from actually clearing their trash.
+export async function deleteEntryForever(supabase: SupabaseClient, trashId: string, clientId: string, driveFolderId: string | null) {
+  if (driveFolderId) {
+    try {
+      await fetch("/api/drive/trash-script-folder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId, driveFolderId }),
+      });
+    } catch {
+      // Swallowed on purpose — see doc comment above.
+    }
+  }
   const { error } = await supabase.from("calendar_trash").delete().eq("id", trashId);
   if (error) throw error;
 }
@@ -415,8 +437,8 @@ export async function insertRepeatEntry(supabase: SupabaseClient, clientId: stri
     .single();
   if (error) throw error;
   const created = mapEntryRow({ ...data, calendar_comments: [] });
-  const driveFolderUrl = await requestDriveFolder(created.id);
-  return driveFolderUrl ? { ...created, driveFolderUrl } : created;
+  const folder = await requestDriveFolder(created.id);
+  return folder ? { ...created, driveFolderId: folder.id, driveFolderUrl: folder.url } : created;
 }
 
 // ---------- Availability blocks ----------

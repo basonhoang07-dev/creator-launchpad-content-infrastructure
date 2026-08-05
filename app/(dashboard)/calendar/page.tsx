@@ -14,7 +14,7 @@ import {
   Lock, Plus, Repeat, Shuffle, Sparkles, StickyNote, Table2, Target, Trash2, TrendingUp, Users, Video, Wand2, X,
 } from "lucide-react";
 import { C } from "@/lib/theme";
-import { Card, Badge, Button, Field, Modal, SectionHeader, EmptyState, InfoTooltip, inputStyle } from "@/components/ui";
+import { Card, Badge, Button, Field, Modal, ConfirmModal, SectionHeader, EmptyState, InfoTooltip, inputStyle } from "@/components/ui";
 import { createClient } from "@/lib/supabase";
 import { useSession } from "@/components/SessionProvider";
 import { useDefaultScopedClientId } from "@/components/useDefaultClient";
@@ -127,6 +127,8 @@ function ContentCalendarInner({ clientId }: { clientId: string }) {
   const [pendingScheduleAction, setPendingScheduleAction] = useState<"auto" | "claude" | null>(null);
   const [showCalTrash, setShowCalTrash] = useState(false);
   const [activeEntry, setActiveEntry] = useState<CalendarEntry | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<CalendarEntry | null>(null);
+  const [confirmDeleteForever, setConfirmDeleteForever] = useState<{ trashId: string; entry: CalendarEntry } | null>(null);
   const [form, setForm] = useState({ brand: "", title: "", format: "", recurFreq: "none" });
   const [planningWithClaude, setPlanningWithClaude] = useState(false);
   const [planError, setPlanError] = useState("");
@@ -360,9 +362,9 @@ function ContentCalendarInner({ clientId }: { clientId: string }) {
       showToast(toastMessage(err, "Couldn't restore that entry — try again."));
     }
   }
-  async function handleDeleteEntryForever(trashId: string) {
+  async function handleDeleteEntryForever(trashId: string, entry: CalendarEntry) {
     try {
-      await deleteEntryForeverRow(createClient(), trashId);
+      await deleteEntryForeverRow(createClient(), trashId, clientId, entry.driveFolderId);
       reload();
     } catch (err) {
       showToast(toastMessage(err, "Couldn't permanently delete — try again."));
@@ -659,7 +661,7 @@ function ContentCalendarInner({ clientId }: { clientId: string }) {
                   <div style={{ fontSize: 11, color: C.textFaint }}>{t.entry.brand} · {t.entry.format}</div>
                 </div>
                 <Button size="sm" variant="secondary" onClick={() => handleRestoreEntry(t.trashId, t.entry)}><Check size={12} /> Restore</Button>
-                <button onClick={() => handleDeleteEntryForever(t.trashId)} title="Delete forever" style={{ background: "none", border: "none", color: C.danger, cursor: "pointer" }}><X size={15} /></button>
+                <button onClick={() => setConfirmDeleteForever({ trashId: t.trashId, entry: t.entry })} title="Delete forever" style={{ background: "none", border: "none", color: C.danger, cursor: "pointer" }}><X size={15} /></button>
               </div>
             ))}
             {data.trash.length === 0 && <EmptyState icon={Trash2} text="Trash is empty." />}
@@ -824,11 +826,42 @@ function ContentCalendarInner({ clientId }: { clientId: string }) {
             >
               <ExternalLink size={14} /> Copy share link
             </Button>
-            <Button variant="danger" onClick={() => handleDeleteEntry(activeEntry)}>
+            <Button variant="danger" onClick={() => setConfirmDelete(activeEntry)}>
               <Trash2 size={14} /> Delete
             </Button>
           </div>
         </Modal>
+      )}
+
+      {confirmDelete && (
+        <ConfirmModal
+          title="Delete this script?"
+          body={
+            <>
+              "{confirmDelete.title}" moves to Trash and can be restored anytime — its Drive folder (if it has one) stays untouched
+              until it's permanently deleted.
+            </>
+          }
+          onConfirm={() => handleDeleteEntry(confirmDelete)}
+          onClose={() => setConfirmDelete(null)}
+        />
+      )}
+
+      {confirmDeleteForever && (
+        <ConfirmModal
+          title="Delete forever?"
+          body={
+            <>
+              "{confirmDeleteForever.entry.title}" can't be restored after this.
+              {confirmDeleteForever.entry.driveFolderId
+                ? " Its Drive folder also moves to your Google Drive's own trash — recoverable there for about 30 days, same as deleting it by hand."
+                : ""}
+            </>
+          }
+          confirmLabel="Delete forever"
+          onConfirm={() => handleDeleteEntryForever(confirmDeleteForever.trashId, confirmDeleteForever.entry)}
+          onClose={() => setConfirmDeleteForever(null)}
+        />
       )}
     </div>
   );

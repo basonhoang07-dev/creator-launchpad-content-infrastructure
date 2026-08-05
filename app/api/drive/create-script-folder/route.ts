@@ -23,12 +23,12 @@ export async function POST(req: NextRequest) {
   if (!entry) return NextResponse.json({ error: "Script not found" }, { status: 404 });
 
   try {
-    const url = await ensureScriptFolder(entry.client_id, entry.brand, entry.title);
-    if (!url) return NextResponse.json({ skipped: true });
+    const folder = await ensureScriptFolder(entry.client_id, entry.brand, entry.title);
+    if (!folder) return NextResponse.json({ skipped: true });
 
     const admin = createAdminSupabaseClient();
-    await admin.from("calendar_entries").update({ drive_folder_url: url }).eq("id", entryId);
-    return NextResponse.json({ ok: true, url });
+    await admin.from("calendar_entries").update({ drive_folder_id: folder.id, drive_folder_url: folder.url }).eq("id", entryId);
+    return NextResponse.json({ ok: true, id: folder.id, url: folder.url });
   } catch (err) {
     // A Drive hiccup shouldn't be treated as the script creation having
     // failed — the caller already has its entry either way.

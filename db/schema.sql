@@ -105,7 +105,10 @@ create table calendar_entries (
   -- Set once by app/api/drive/create-script-folder after a real Drive
   -- folder gets created for this script (client_id must have a row in
   -- google_drive_connections) — null until then, and permanently null if
-  -- the client never connects Drive.
+  -- the client never connects Drive. drive_folder_id is stored alongside
+  -- the URL (not parsed back out of it later) so permanent deletion can
+  -- trash the right Drive folder via app/api/drive/trash-script-folder.
+  drive_folder_id text,
   drive_folder_url text,
   created_at timestamptz default now()
 );
