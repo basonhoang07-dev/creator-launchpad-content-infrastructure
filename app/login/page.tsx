@@ -88,12 +88,20 @@ function LoginPageInner() {
   return (
     <div style={{ minHeight: "100vh", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
       <div style={{ width: 420, maxWidth: "100%" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 28, justifyContent: "center" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, justifyContent: "center" }}>
           <Logo size={40} />
           <span className="cl-display" style={{ fontSize: 22, fontWeight: 700, color: C.text }}>
             Creator Launchpad
           </span>
         </div>
+        {/* Plain-text description of the app, reachable without signing in —
+            Google's OAuth verification review checks that the app's "home
+            page" URL explains what the app is/does instead of just being a
+            bare login form. */}
+        <p style={{ textAlign: "center", fontSize: 13, color: C.textMuted, lineHeight: 1.6, margin: "0 0 24px" }}>
+          Creator Launchpad is a private client portal for UGC-creator coaching — content calendars, scripting tools, KPI
+          tracking, and call recaps for creators and their coaching team.
+        </p>
 
         <Card style={{ padding: 28 }}>
           {mode === "login" ? (
