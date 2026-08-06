@@ -21,7 +21,7 @@ import { Card, Badge, Button, Field, Modal, SectionHeader, EmptyState, inputStyl
 import { createClient } from "@/lib/supabase";
 import { useSession } from "@/components/SessionProvider";
 import { useDefaultScopedClientId } from "@/components/useDefaultClient";
-import { formatWeekLabel, type WeeklyLog } from "@/lib/helpers";
+import { formatWeekLabel, getWeekKey, type WeeklyLog } from "@/lib/helpers";
 import {
   fetchAccounts, removeAccount, postAnnouncement, addClient,
   fetchWeeklyLogHistory, fetchAccessRequests, approveAccessRequest, denyAccessRequest,
@@ -100,6 +100,23 @@ export default function AdminPanel() {
       showToast(toastMessage(err, "Couldn't approve that request — try again."));
     } finally {
       setApprovingId(null);
+    }
+  }
+  const [loadingClientLogId, setLoadingClientLogId] = useState<string | null>(null);
+  async function handleViewClientCheckIn(clientId: string) {
+    setLoadingClientLogId(clientId);
+    try {
+      const logs = await fetchWeeklyLogHistory(createClient(), clientId);
+      const thisWeek = logs.find((l) => l.weekOf === getWeekKey());
+      if (!thisWeek) {
+        showToast("No check-in submitted yet for this client this week.");
+        return;
+      }
+      setViewingLog(thisWeek);
+    } catch (err) {
+      showToast(toastMessage(err, "Couldn't load that client's check-in — try again."));
+    } finally {
+      setLoadingClientLogId(null);
     }
   }
   async function handleDenyRequest(id: string) {
@@ -282,18 +299,27 @@ export default function AdminPanel() {
             <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
               <Star size={15} /> This week's check-ins
             </div>
-            <div style={{ fontSize: 11.5, color: C.textFaint, marginBottom: 14 }}>Who's submitted their weekly check-in so far — chase down anyone still marked Missing.</div>
+            <div style={{ fontSize: 11.5, color: C.textFaint, marginBottom: 14 }}>Who's submitted their weekly check-in so far — click anyone Submitted to read it, chase down anyone still marked Missing.</div>
             <div style={{ display: "grid", gap: 8 }}>
               {[...(community?.clients || [])]
                 .sort((a, b) => (a.checkedInThisWeek === b.checkedInThisWeek ? 0 : a.checkedInThisWeek ? 1 : -1))
                 .map((c) => (
-                  <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 12, background: C.surface2, borderRadius: 10, padding: 12 }}>
+                  <button
+                    key={c.id}
+                    onClick={() => c.checkedInThisWeek && handleViewClientCheckIn(c.id)}
+                    disabled={!c.checkedInThisWeek || loadingClientLogId === c.id}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 12, background: C.surface2, border: "none", borderRadius: 10, padding: 12,
+                      width: "100%", textAlign: "left", cursor: c.checkedInThisWeek ? "pointer" : "default",
+                    }}
+                  >
                     <div style={{ width: 28, height: 28, borderRadius: "50%", background: C.surface3, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
                       {c.name.slice(0, 1)}
                     </div>
-                    <span style={{ fontSize: 13.5, fontWeight: 600, flex: 1 }}>{c.name}</span>
+                    <span style={{ fontSize: 13.5, fontWeight: 600, flex: 1, color: C.text }}>{c.name}</span>
                     {c.checkedInThisWeek ? <Badge tone="success">Submitted</Badge> : <Badge tone="warning">Missing</Badge>}
-                  </div>
+                    {c.checkedInThisWeek && <ChevronRight size={15} color={C.textFaint} />}
+                  </button>
                 ))}
               {(!community || community.clients.length === 0) && <EmptyState icon={Star} text="No members on the roster yet." />}
             </div>
