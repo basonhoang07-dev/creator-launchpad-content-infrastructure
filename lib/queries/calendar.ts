@@ -102,6 +102,7 @@ function mapBlockRow(row: any): AvailabilityBlock {
     start_time: row.start_time,
     end_time: row.end_time,
     repeat_freq: row.repeat_freq || "none",
+    google_event_id: row.google_event_id || null,
   };
 }
 

@@ -1,13 +1,40 @@
 "use client";
 
-import React, { useState } from "react";
-import { ChevronLeft, ChevronRight, Plus, Repeat, Trash2 } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { ChevronLeft, ChevronRight, Plus, Repeat, Trash2, CalendarClock } from "lucide-react";
 import { C, BLOCK_TYPES, BLOCK_COLORS, WEEKDAY_NAMES } from "@/lib/theme";
 import { Button, Field, Modal, inputStyle } from "@/components/ui";
 import { createClient } from "@/lib/supabase";
 import { getWeekKey, todayPlus, occurrencesOn, repeatLabel, parseDateOnly, formatDateOnly, type AvailabilityBlock } from "@/lib/helpers";
 import { saveBlock as saveBlockRow, deleteBlock as deleteBlockRow } from "@/lib/queries/calendar";
 import { useToast, toastMessage } from "@/components/Toast";
+
+interface GoogleEvent {
+  id: string;
+  title: string;
+  date: string;
+  time: string | null;
+  allDay: boolean;
+}
+
+// Best-effort — Calendar sync is a side effect of saving/deleting a block,
+// never something that should block or fail the block save itself.
+async function syncAvailabilityToGoogle(clientId: string, action: "sync" | "delete", extra: { blockId?: string; googleEventId?: string | null }) {
+  try {
+    await fetch("/api/google-calendar/sync-availability", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        clientId,
+        action,
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        ...extra,
+      }),
+    });
+  } catch {
+    // Silent — their availability is already saved in the app either way.
+  }
+}
 
 function BlockModal({
   initialDate,
@@ -91,6 +118,7 @@ export default function AvailabilityEditor({
   const [modalDate, setModalDate] = useState<string | null>(null);
   const [editingBlock, setEditingBlock] = useState<AvailabilityBlock | null>(null);
   const [weekOffset, setWeekOffset] = useState(0);
+  const [googleEvents, setGoogleEvents] = useState<GoogleEvent[]>([]);
 
   const week1Start = (() => {
     const d = parseDateOnly(getWeekKey());
@@ -103,6 +131,26 @@ export default function AvailabilityEditor({
     return formatDateOnly(d);
   });
 
+  // Read-only pull of the client's real Google Calendar for whichever
+  // 14-day window is currently in view — a no-op (empty list) if they've
+  // never connected Calendar.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/google-calendar/events?clientId=${encodeURIComponent(clientId)}&start=${gridDays[0]}&end=${gridDays[13]}`);
+        const json = await res.json();
+        if (!cancelled && res.ok) setGoogleEvents(json.events || []);
+      } catch {
+        // Silent — this is a supplementary read, not core functionality.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientId, week1Start]);
+
   async function handleSave(block: { id?: string; label: string; date: string; allDay: boolean; startTime: string; endTime: string; freq: string }) {
     try {
       const supabase = createClient();
@@ -111,17 +159,20 @@ export default function AvailabilityEditor({
       onChange(exists ? blocks.map((b) => (b.id === saved.id ? saved : b)) : [...blocks, saved]);
       setModalDate(null);
       setEditingBlock(null);
+      syncAvailabilityToGoogle(clientId, "sync", { blockId: saved.id });
     } catch (err) {
       showToast(toastMessage(err, "Couldn't save that availability block — try again."));
     }
   }
   async function handleDelete(id: string) {
     try {
+      const googleEventId = blocks.find((b) => b.id === id)?.google_event_id;
       const supabase = createClient();
       await deleteBlockRow(supabase, id);
       onChange(blocks.filter((b) => b.id !== id));
       setModalDate(null);
       setEditingBlock(null);
+      syncAvailabilityToGoogle(clientId, "delete", { googleEventId });
     } catch (err) {
       showToast(toastMessage(err, "Couldn't delete that block — try again."));
     }
@@ -162,6 +213,7 @@ export default function AvailabilityEditor({
             <div key={wi} className="cl-calendar-week-grid" style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6, marginBottom: 6 }}>
               {week.map((d) => {
                 const occ = occurrencesOn(blocks, d);
+                const dayEvents = googleEvents.filter((e) => e.date === d);
                 const isToday = d === todayPlus(0);
                 return (
                   <div key={d} style={{ background: C.surface, border: `1px solid ${isToday ? C.accent : C.border}`, borderRadius: 10, padding: 8, minHeight: 96, display: "flex", flexDirection: "column", gap: 4 }}>
@@ -188,6 +240,17 @@ export default function AvailabilityEditor({
                           </button>
                         );
                       })}
+                      {dayEvents.map((e) => (
+                        <div
+                          key={e.id}
+                          title={e.title}
+                          className="cl-mono"
+                          style={{ textAlign: "left", background: C.surface2, color: C.textMuted, border: `1px dashed ${C.border}`, borderRadius: 5, padding: "3px 6px", fontSize: 9.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                        >
+                          <CalendarClock size={9} style={{ flexShrink: 0 }} />
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{e.allDay ? e.title : `${e.time} ${e.title}`}</span>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 );

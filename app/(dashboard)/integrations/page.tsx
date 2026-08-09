@@ -2,10 +2,10 @@
 
 // app/(dashboard)/integrations/page.tsx — ported from the prototype's IntegrationsPage.
 //
-// 'drive' is the one real OAuth integration here (see lib/google-drive.ts) —
-// "Connect" redirects to Google's consent screen instead of just flipping a
-// DB flag like the other cards still do. 'gcal' remains the old flag-only
-// stub; only Drive got wired up to a real API.
+// 'drive' and 'gcal' are real OAuth integrations (see lib/google-drive.ts and
+// lib/google-calendar.ts) — "Connect" redirects to Google's consent screen
+// instead of just flipping a DB flag like the remaining external-tool cards
+// still do.
 
 import React, { useCallback, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
@@ -27,7 +27,7 @@ function IntegrationsInner({ clientId }: { clientId: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [integrations, setIntegrations] = useState<IntegrationMeta[] | null>(null);
-  const [disconnecting, setDisconnecting] = useState(false);
+  const [disconnecting, setDisconnecting] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     setIntegrations(await fetchIntegrations(createClient(), clientId));
@@ -37,16 +37,26 @@ function IntegrationsInner({ clientId }: { clientId: string }) {
     reload();
   }, [reload]);
 
-  // /api/oauth/google/callback redirects back here with one of these set.
+  // /api/oauth/google/callback and /api/oauth/google-calendar/callback
+  // redirect back here with one of these set.
   useEffect(() => {
-    const connectedEmail = searchParams.get("drive_connected");
+    const driveEmail = searchParams.get("drive_connected");
     const driveError = searchParams.get("drive_error");
-    if (connectedEmail) {
-      showToast(`Google Drive connected — ${connectedEmail}`, "success");
+    const gcalEmail = searchParams.get("gcal_connected");
+    const gcalError = searchParams.get("gcal_error");
+    if (driveEmail) {
+      showToast(`Google Drive connected — ${driveEmail}`, "success");
       reload();
       router.replace("/integrations");
     } else if (driveError) {
       showToast(driveError);
+      router.replace("/integrations");
+    } else if (gcalEmail) {
+      showToast(`Google Calendar connected — ${gcalEmail}`, "success");
+      reload();
+      router.replace("/integrations");
+    } else if (gcalError) {
+      showToast(gcalError);
       router.replace("/integrations");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -66,11 +76,14 @@ function IntegrationsInner({ clientId }: { clientId: string }) {
   function connectDrive() {
     window.location.href = `/api/oauth/google/start?clientId=${encodeURIComponent(clientId)}`;
   }
+  function connectGoogleCalendar() {
+    window.location.href = `/api/oauth/google-calendar/start?clientId=${encodeURIComponent(clientId)}`;
+  }
 
-  async function disconnectDrive() {
-    setDisconnecting(true);
+  async function disconnectGoogleOAuth(id: "drive" | "gcal") {
+    setDisconnecting(id);
     try {
-      const res = await fetch("/api/drive/disconnect", {
+      const res = await fetch(id === "drive" ? "/api/drive/disconnect" : "/api/google-calendar/disconnect", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ clientId }),
@@ -78,9 +91,9 @@ function IntegrationsInner({ clientId }: { clientId: string }) {
       if (!res.ok) throw new Error((await res.json()).error || "Couldn't disconnect");
       reload();
     } catch (err) {
-      showToast(toastMessage(err, "Couldn't disconnect Google Drive — try again."));
+      showToast(toastMessage(err, `Couldn't disconnect ${id === "drive" ? "Google Drive" : "Google Calendar"} — try again.`));
     } finally {
-      setDisconnecting(false);
+      setDisconnecting(null);
     }
   }
 
@@ -92,7 +105,7 @@ function IntegrationsInner({ clientId }: { clientId: string }) {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14 }}>
         {integrations.map((i) => {
           const isExternal = EXTERNAL_TOOL_URLS[i.id];
-          const isDrive = i.id === "drive";
+          const isGoogleOAuth = i.id === "drive" || i.id === "gcal";
           return (
             <Card key={i.id} style={{ display: "flex", alignItems: "center", gap: 14 }}>
               <div style={{ width: 40, height: 40, borderRadius: 10, background: i.connected || isExternal ? C.accentDim : C.surface2, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -100,15 +113,20 @@ function IntegrationsInner({ clientId }: { clientId: string }) {
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 600, fontSize: 14 }}>{i.name}</div>
-                <div style={{ fontSize: 12, color: C.textMuted }}>{isDrive && i.connected && i.connectedEmail ? `Connected as ${i.connectedEmail}` : i.desc}</div>
+                <div style={{ fontSize: 12, color: C.textMuted }}>{isGoogleOAuth && i.connected && i.connectedEmail ? `Connected as ${i.connectedEmail}` : i.desc}</div>
               </div>
               {isExternal ? (
                 <Button size="sm" variant="secondary" onClick={() => window.open(EXTERNAL_TOOL_URLS[i.id], "_blank")}>
                   <ExternalLink size={13} /> Open
                 </Button>
-              ) : isDrive ? (
-                <Button size="sm" variant={i.connected ? "secondary" : "primary"} disabled={disconnecting} onClick={i.connected ? disconnectDrive : connectDrive}>
-                  {i.connected ? (disconnecting ? "Disconnecting..." : "Disconnect") : "Connect"}
+              ) : isGoogleOAuth ? (
+                <Button
+                  size="sm"
+                  variant={i.connected ? "secondary" : "primary"}
+                  disabled={disconnecting === i.id}
+                  onClick={i.connected ? () => disconnectGoogleOAuth(i.id as "drive" | "gcal") : i.id === "drive" ? connectDrive : connectGoogleCalendar}
+                >
+                  {i.connected ? (disconnecting === i.id ? "Disconnecting..." : "Disconnect") : "Connect"}
                 </Button>
               ) : (
                 <Button size="sm" variant={i.connected ? "secondary" : "primary"} onClick={() => toggle(i.id)}>

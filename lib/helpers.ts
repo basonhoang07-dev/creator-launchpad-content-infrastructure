@@ -112,6 +112,7 @@ export interface AvailabilityBlock {
   start_time?: string | null;
   end_time?: string | null;
   repeat_freq: string; // 'none' | 'daily' | 'weekly' | 'weekday'
+  google_event_id?: string | null;
 }
 
 // Resolves whether a recurring availability block occurs on a given date
