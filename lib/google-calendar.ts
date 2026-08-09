@@ -132,10 +132,20 @@ function buildEventBody(block: { label: string; block_date: string; all_day: boo
     body.start = { date: block.block_date };
     body.end = { date: addDays(block.block_date, 1) }; // Google's all-day end date is exclusive.
   } else {
-    body.start = { dateTime: `${block.block_date}T${block.start_time || "09:00"}:00`, timeZone };
-    body.end = { dateTime: `${block.block_date}T${block.end_time || "17:00"}:00`, timeZone };
+    body.start = { dateTime: `${block.block_date}T${toHHMMSS(block.start_time) || "09:00:00"}`, timeZone };
+    body.end = { dateTime: `${block.block_date}T${toHHMMSS(block.end_time) || "17:00:00"}`, timeZone };
   }
   return body;
+}
+
+// Postgres `time` columns come back from Supabase as "HH:MM:SS", but the
+// form that creates a block only ever sends "HH:MM" — accept either instead
+// of assuming one, since blindly appending ":00" to an already-full
+// "HH:MM:SS" string produces an invalid "HH:MM:SS:00" timestamp Google
+// rejects.
+function toHHMMSS(t?: string | null): string | null {
+  if (!t) return null;
+  return t.split(":").length >= 3 ? t : `${t}:00`;
 }
 
 // Creates (first sync) or updates (already has a google_event_id) the
