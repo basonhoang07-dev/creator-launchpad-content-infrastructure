@@ -42,7 +42,9 @@ export default function Sidebar({
   const items: { id: string; href: string; label: string; icon: typeof LayoutDashboard }[] = [
     { id: "home", href: "/", label: "Home", icon: LayoutDashboard },
     ...(seesFinancials ? [{ id: "kpi", href: "/kpi", label: "KPI Trackers", icon: DollarSign }] : []),
-    { id: "sops", href: "/sops", label: "SOP Libraries", icon: BookOpen },
+    // SOP Libraries: admin-only while it's still being built out. Flip this
+    // back to unconditional once it's ready to publish to everyone.
+    ...(profile.role === "Admin" ? [{ id: "sops", href: "/sops", label: "SOP Libraries", icon: BookOpen }] : []),
     { id: "calendar", href: "/calendar", label: "Content Calendar", icon: CalendarDays },
     ...(!isCreativeDirector ? [{ id: "integrations", href: "/integrations", label: "Integrations", icon: Plug }] : []),
   ];

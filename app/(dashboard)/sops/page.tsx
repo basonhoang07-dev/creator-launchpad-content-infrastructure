@@ -43,11 +43,14 @@ export default function SOPPage() {
   const [jumpApplied, setJumpApplied] = useState(false);
 
   const reload = useCallback(async () => {
+    // Admin-only while this is still being built out — see Sidebar/GlobalSearch
+    // for the matching nav/search gating. Skip the fetch entirely for everyone else.
+    if (!isAdmin) return { ugc: [], format: [] };
     const supabase = createClient();
     const data = await fetchSops(supabase, profile.organization_id);
     setSops(data);
     return data;
-  }, [profile.organization_id]);
+  }, [profile.organization_id, isAdmin]);
 
   useEffect(() => {
     reload();
@@ -65,6 +68,10 @@ export default function SOPPage() {
     }
     if (targetTab || sopId) router.replace("/sops");
   }, [sops, jumpApplied, searchParams, router]);
+
+  if (!isAdmin) {
+    return <EmptyState icon={BookOpen} text="SOP Libraries isn't available yet." />;
+  }
 
   if (!sops) return <div style={{ color: C.textMuted, fontSize: 14 }}>Loading…</div>;
 

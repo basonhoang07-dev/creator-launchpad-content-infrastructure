@@ -31,6 +31,9 @@ export default function GlobalSearch({ onNavigate }: { onNavigate: (r: SearchRes
   const { profile } = useSession();
   const scopedClientId = useScopedClientId();
   const canSeeRecaps = profile.role === "Client" || profile.role === "Admin";
+  // SOP Libraries is admin-only while it's still being built out (see Sidebar) —
+  // keep search results in sync so it can't be jumped to that way either.
+  const canSeeSops = profile.role === "Admin";
 
   const [query, setQuery] = useState("");
   const [focused, setFocused] = useState(false);
@@ -46,23 +49,25 @@ export default function GlobalSearch({ onNavigate }: { onNavigate: (r: SearchRes
     const timer = setTimeout(async () => {
       const found: SearchResult[] = [];
 
-      const { data: sops } = await supabase
-        .from("sops")
-        .select("id, kind, title, body")
-        .eq("organization_id", profile.organization_id)
-        .is("deleted_at", null)
-        .or(`title.ilike.%${q}%,body.ilike.%${q}%`)
-        .limit(5);
-      (sops || []).forEach((s) => {
-        found.push({
-          kind: "sop",
-          tab: s.kind,
-          sopId: s.id,
-          icon: BookOpen,
-          title: s.title,
-          sub: s.kind === "ugc" ? "UGC SOP" : "Format SOP",
+      if (canSeeSops) {
+        const { data: sops } = await supabase
+          .from("sops")
+          .select("id, kind, title, body")
+          .eq("organization_id", profile.organization_id)
+          .is("deleted_at", null)
+          .or(`title.ilike.%${q}%,body.ilike.%${q}%`)
+          .limit(5);
+        (sops || []).forEach((s) => {
+          found.push({
+            kind: "sop",
+            tab: s.kind,
+            sopId: s.id,
+            icon: BookOpen,
+            title: s.title,
+            sub: s.kind === "ugc" ? "UGC SOP" : "Format SOP",
+          });
         });
-      });
+      }
 
       if (scopedClientId) {
         const { data: entries } = await supabase
