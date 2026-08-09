@@ -24,16 +24,30 @@ import { useRouter } from "next/navigation";
 import { ChevronRight, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { C } from "@/lib/theme";
-import { Card, Field, Button, Logo, inputStyle } from "@/components/ui";
+import { Card, Field, Button, Logo, inputStyle, Avatar } from "@/components/ui";
+
+function readFileAsDataURL(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
 
 export default function SetPasswordPage() {
   const router = useRouter();
   const [checking, setChecking] = useState(true);
   const [hasSession, setHasSession] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [userName, setUserName] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [step, setStep] = useState<"password" | "avatar">("password");
+  const [avatarUrl, setAvatarUrl] = useState("");
+  const [avatarSaving, setAvatarSaving] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -42,22 +56,25 @@ export default function SetPasswordPage() {
       const accessToken = hashParams.get("access_token");
       const refreshToken = hashParams.get("refresh_token");
 
+      let session = null;
       if (accessToken && refreshToken) {
         // Explicit and deterministic — overwrites any prior session with
         // exactly the identity this invite link was minted for.
-        const { error: sessionError } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
-        setHasSession(!sessionError);
-        setChecking(false);
-        return;
+        const { data, error: sessionError } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+        session = sessionError ? null : data.session;
+      } else {
+        // No tokens in the URL at all (e.g. a bookmarked/reloaded link after
+        // the fragment's already been consumed) — fall back to whatever
+        // session already exists, same as before.
+        const { data } = await supabase.auth.getSession();
+        session = data.session;
       }
-
-      // No tokens in the URL at all (e.g. a bookmarked/reloaded link after
-      // the fragment's already been consumed) — fall back to whatever
-      // session already exists, same as before.
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
       setHasSession(!!session);
+      if (session) {
+        setUserId(session.user.id);
+        const { data: profile } = await supabase.from("profiles").select("name").eq("id", session.user.id).maybeSingle();
+        setUserName(profile?.name || "");
+      }
       setChecking(false);
     })();
   }, []);
@@ -81,6 +98,26 @@ export default function SetPasswordPage() {
       setError(updateError.message);
       return;
     }
+    // One more quick step (a profile picture) before landing on the real
+    // dashboard, rather than sending them straight in.
+    setStep("avatar");
+  }
+
+  async function handleAvatarFile(files: FileList | null) {
+    const file = files?.[0];
+    if (!file || !userId) return;
+    setAvatarSaving(true);
+    try {
+      const dataUrl = await readFileAsDataURL(file);
+      setAvatarUrl(dataUrl);
+      const supabase = createClient();
+      await supabase.from("profiles").update({ avatar_url: dataUrl }).eq("id", userId);
+    } finally {
+      setAvatarSaving(false);
+    }
+  }
+
+  function finishOnboarding() {
     router.push("/");
     router.refresh();
   }
@@ -110,7 +147,7 @@ export default function SetPasswordPage() {
                 Go to sign in
               </Button>
             </>
-          ) : (
+          ) : step === "password" ? (
             <form onSubmit={handleSetPassword}>
               <div
                 className="cl-mono"
@@ -149,6 +186,51 @@ export default function SetPasswordPage() {
                 {loading ? <Loader2 size={16} className="cl-spin" /> : <>Set password & continue <ChevronRight size={16} /></>}
               </Button>
             </form>
+          ) : (
+            <div>
+              <div
+                className="cl-mono"
+                style={{ fontSize: 11, letterSpacing: "0.1em", color: C.accentLight, marginBottom: 6, textTransform: "uppercase" }}
+              >
+                Almost there
+              </div>
+              <h1 className="cl-display" style={{ fontSize: 20, fontWeight: 700, margin: "0 0 6px", color: C.text }}>
+                Add a profile picture
+              </h1>
+              <p style={{ fontSize: 13, color: C.textMuted, margin: "0 0 20px", lineHeight: 1.5 }}>
+                Optional, but it makes things like the leaderboard and account list less anonymous. You can always change it later from the sidebar.
+              </p>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 22 }}>
+                <Avatar name={userName || "?"} avatarUrl={avatarUrl} size={56} />
+                <label style={{ cursor: avatarSaving ? "default" : "pointer" }}>
+                  <span
+                    style={{
+                      display: "inline-block",
+                      fontSize: 12.5,
+                      fontWeight: 600,
+                      color: C.accentLight,
+                      border: `1px solid ${C.border}`,
+                      borderRadius: 8,
+                      padding: "7px 12px",
+                      opacity: avatarSaving ? 0.6 : 1,
+                    }}
+                  >
+                    {avatarSaving ? "Uploading…" : avatarUrl ? "Choose a different photo" : "Choose a photo"}
+                  </span>
+                  <input type="file" accept="image/*" disabled={avatarSaving} onChange={(e) => handleAvatarFile(e.target.files)} style={{ display: "none" }} />
+                </label>
+              </div>
+
+              <div style={{ display: "flex", gap: 8 }}>
+                <Button variant="secondary" style={{ flex: 1, justifyContent: "center" }} onClick={finishOnboarding}>
+                  Skip for now
+                </Button>
+                <Button style={{ flex: 1, justifyContent: "center" }} disabled={avatarSaving} onClick={finishOnboarding}>
+                  {avatarUrl ? "Continue" : "Continue without a photo"}
+                </Button>
+              </div>
+            </div>
           )}
         </Card>
       </div>
