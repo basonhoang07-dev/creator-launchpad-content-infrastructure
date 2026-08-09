@@ -54,9 +54,20 @@ export async function saveWeeklyLog(supabase: SupabaseClient, clientId: string, 
     if (error) throw error;
     await supabase.from("weekly_log_campaign_entries").delete().eq("weekly_log_id", logId);
   } else {
-    const { data, error } = await supabase.from("weekly_logs").insert(row).select().single();
+    // No known id doesn't mean no row exists yet — applyBonusToLog (lib/queries/calendar.ts)
+    // can create a bonus-only row for this client_id+week_of from an entirely different
+    // session before the client ever opens their own check-in, and the wizard's `editingLog`
+    // prop can be stale if the client's Home tab was open before that happened. A plain
+    // insert would then hit the `unique (client_id, week_of)` constraint and fail the save
+    // outright, so upsert on that same key to update-in-place instead.
+    const { data, error } = await supabase
+      .from("weekly_logs")
+      .upsert(row, { onConflict: "client_id,week_of" })
+      .select()
+      .single();
     if (error) throw error;
     logId = data.id;
+    await supabase.from("weekly_log_campaign_entries").delete().eq("weekly_log_id", logId);
   }
 
   const entries = fields.campaignEntries

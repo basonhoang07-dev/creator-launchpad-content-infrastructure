@@ -39,7 +39,10 @@ export default function HomePage() {
   const reload = useCallback(async () => {
     const supabase = createClient();
     if (clientId) {
-      setLoading(true);
+      // Only show the full-page "Loading…" state on the very first fetch — a
+      // background refresh (e.g. tab refocus, see below) shouldn't blank out
+      // data the user is already looking at.
+      setLoading(!homeData);
       const data = await fetchHomeData(supabase, clientId);
       setHomeData(data);
       setLoading(false);
@@ -48,10 +51,30 @@ export default function HomePage() {
       const data = await fetchCommunityOverview(supabase, profile.organization_id);
       setCommunity(data);
     }
-  }, [clientId, profile.role, profile.organization_id]);
+  }, [clientId, profile.role, profile.organization_id, homeData]);
 
   useEffect(() => {
     reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientId, profile.role, profile.organization_id]);
+
+  // Client components fetch once on mount, but Next's client-side router
+  // cache can keep this page's instance alive (and its data un-refetched)
+  // when you navigate away and back within ~30s — and nothing here re-fetches
+  // when another session (an editor logging a view, you working in Admin
+  // Panel) changes the data this page shows. Re-fetch whenever the tab comes
+  // back into focus so "Home" doesn't look stale until a hard refresh.
+  useEffect(() => {
+    function onVisible() {
+      if (document.visibilityState === "visible") reload();
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reload]);
 
   const [editingLog, setEditingLog] = useState<WeeklyLog | null>(null);
