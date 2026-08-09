@@ -17,7 +17,7 @@ import {
   AlertCircle, Check, ChevronRight, Megaphone, Star, Trash2, UserPlus, Users, Wallet, X,
 } from "lucide-react";
 import { C } from "@/lib/theme";
-import { Card, Badge, Button, Field, Modal, SectionHeader, EmptyState, inputStyle } from "@/components/ui";
+import { Card, Badge, Button, Field, Modal, SectionHeader, EmptyState, inputStyle, Avatar } from "@/components/ui";
 import { createClient } from "@/lib/supabase";
 import { useSession } from "@/components/SessionProvider";
 import { useDefaultScopedClientId } from "@/components/useDefaultClient";
@@ -270,9 +270,7 @@ export default function AdminPanel() {
             <div style={{ display: "grid", gap: 8 }}>
               {accounts.map((a) => (
                 <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 4px", borderBottom: `1px solid ${C.border}`, flexWrap: "wrap", rowGap: 8 }}>
-                  <div style={{ width: 28, height: 28, borderRadius: "50%", background: C.surface3, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
-                    {a.name.slice(0, 1)}
-                  </div>
+                  <Avatar name={a.name} avatarUrl={a.avatarUrl} />
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 13.5, fontWeight: 600 }}>{a.name}</div>
                     <div style={{ fontSize: 11.5, color: C.textMuted }}>{a.email}</div>

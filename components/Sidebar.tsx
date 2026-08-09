@@ -15,10 +15,21 @@ import {
   MessageSquare, ShieldCheck, ChevronRight, LogOut, X, Trophy,
 } from "lucide-react";
 import { C, WORKLOAD_LABELS } from "@/lib/theme";
-import { Logo } from "@/components/ui";
+import { Logo, Avatar } from "@/components/ui";
 import { useSession } from "@/components/SessionProvider";
 import GlobalSearch, { type SearchResult } from "@/components/GlobalSearch";
 import ClientPickerModal from "@/components/ClientPickerModal";
+import { createClient } from "@/lib/supabase";
+import { useToast, toastMessage } from "@/components/Toast";
+
+function readFileAsDataURL(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
 
 export default function Sidebar({
   mobileOpen,
@@ -30,7 +41,26 @@ export default function Sidebar({
   const { profile, workingClient, setWorkingClient, signOut } = useSession();
   const router = useRouter();
   const pathname = usePathname();
+  const { showToast } = useToast();
   const [showClientPicker, setShowClientPicker] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+
+  async function handleAvatarChange(files: FileList | null) {
+    const file = files?.[0];
+    if (!file) return;
+    setUploadingAvatar(true);
+    try {
+      const dataUrl = await readFileAsDataURL(file);
+      const supabase = createClient();
+      const { error } = await supabase.from("profiles").update({ avatar_url: dataUrl }).eq("id", profile.id);
+      if (error) throw error;
+      router.refresh();
+    } catch (err) {
+      showToast(toastMessage(err, "Couldn't update your profile picture — try again."));
+    } finally {
+      setUploadingAvatar(false);
+    }
+  }
 
   const isCreativeDirector = profile.role === "Creative Director";
   const seesFinancials = profile.role === "Client" || profile.role === "Admin";
@@ -146,9 +176,19 @@ export default function Sidebar({
 
       <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 14, marginTop: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, padding: "0 8px" }}>
-          <div style={{ width: 28, height: 28, borderRadius: "50%", background: C.surface3, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700 }}>
-            {profile.name.slice(0, 1).toUpperCase()}
-          </div>
+          <label
+            title="Click to change your photo"
+            style={{ cursor: uploadingAvatar ? "default" : "pointer", opacity: uploadingAvatar ? 0.5 : 1, flexShrink: 0 }}
+          >
+            <Avatar name={profile.name} avatarUrl={profile.avatar_url} />
+            <input
+              type="file"
+              accept="image/*"
+              disabled={uploadingAvatar}
+              onChange={(e) => handleAvatarChange(e.target.files)}
+              style={{ display: "none" }}
+            />
+          </label>
           <div style={{ overflow: "hidden" }}>
             <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{profile.name}</div>
             <div className="cl-mono" style={{ fontSize: 10.5, color: C.textFaint }}>{profile.role}</div>

@@ -27,6 +27,7 @@ export interface Profile {
   role: Role;
   status: "pending" | "approved";
   google_meet_email: string | null;
+  avatar_url: string | null;
 }
 
 export interface WorkingClient {

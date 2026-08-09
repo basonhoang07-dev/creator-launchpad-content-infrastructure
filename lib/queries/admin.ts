@@ -17,11 +17,12 @@ export interface AdminAccount {
   role: Role;
   status: "pending" | "approved";
   clientId: string | null;
+  avatarUrl: string | null;
 }
 
 export async function fetchAccounts(supabase: SupabaseClient, organizationId: string): Promise<AdminAccount[]> {
-  const { data } = await supabase.from("profiles").select("id, name, email, role, status, client_id").eq("organization_id", organizationId);
-  return (data || []).map((r) => ({ id: r.id, name: r.name, email: r.email, role: r.role, status: r.status, clientId: r.client_id }));
+  const { data } = await supabase.from("profiles").select("id, name, email, role, status, client_id, avatar_url").eq("organization_id", organizationId);
+  return (data || []).map((r) => ({ id: r.id, name: r.name, email: r.email, role: r.role, status: r.status, clientId: r.client_id, avatarUrl: r.avatar_url }));
 }
 
 // Direct path for an Admin who already knows a client's info — creates the

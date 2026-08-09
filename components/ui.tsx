@@ -11,6 +11,26 @@ import React, { useState } from "react";
 import { HelpCircle, X } from "lucide-react";
 import { C, LOGO_DATA_URI } from "@/lib/theme";
 
+export function Avatar({ name, avatarUrl, size = 28 }: { name: string; avatarUrl?: string | null; size?: number }) {
+  const style: React.CSSProperties = {
+    width: size,
+    height: size,
+    borderRadius: "50%",
+    background: C.surface3,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: Math.round(size * 0.43),
+    fontWeight: 700,
+    flexShrink: 0,
+    overflow: "hidden",
+  };
+  if (avatarUrl) {
+    return <img src={avatarUrl} alt="" style={{ ...style, objectFit: "cover" }} />;
+  }
+  return <div style={style}>{name.slice(0, 1).toUpperCase()}</div>;
+}
+
 export function Logo({ size = 32 }: { size?: number }) {
   return (
     <img
