@@ -12,7 +12,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard, DollarSign, BookOpen, CalendarDays, Plug, Film, UserCog,
-  MessageSquare, ShieldCheck, ChevronRight, LogOut, X,
+  MessageSquare, ShieldCheck, ChevronRight, LogOut, X, Trophy,
 } from "lucide-react";
 import { C, WORKLOAD_LABELS } from "@/lib/theme";
 import { Logo } from "@/components/ui";
@@ -42,6 +42,7 @@ export default function Sidebar({
   const items: { id: string; href: string; label: string; icon: typeof LayoutDashboard }[] = [
     { id: "home", href: "/", label: "Home", icon: LayoutDashboard },
     ...(seesFinancials ? [{ id: "kpi", href: "/kpi", label: "KPI Trackers", icon: DollarSign }] : []),
+    ...(seesFinancials ? [{ id: "leaderboard", href: "/leaderboard", label: "Leaderboard", icon: Trophy }] : []),
     // SOP Libraries: admin-only while it's still being built out. Flip this
     // back to unconditional once it's ready to publish to everyone.
     ...(profile.role === "Admin" ? [{ id: "sops", href: "/sops", label: "SOP Libraries", icon: BookOpen }] : []),
