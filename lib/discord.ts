@@ -118,3 +118,46 @@ export function buildRecapEmbed(input: RecapEmbedInput) {
     footer: { text: `Creator Launchpad · ${input.recapDate}` },
   };
 }
+
+// Posted to one shared, org-wide accountability channel (not per-client, see
+// DISCORD_ACCOUNTABILITY_CHANNEL_ID) — replaces the previous Google Form +
+// Zapier chain with a direct post built from the real weekly_logs data the
+// client just submitted in-app, so the numbers here can never drift from
+// what's actually on their dashboard.
+export interface AccountabilityEmbedInput {
+  clientName: string;
+  weekLabel: string;
+  energyLevel: number | null;
+  wentWell: string;
+  couldImprove: string;
+  roadblock: string;
+  roadblockAction: string;
+  videosFilmed: number;
+  cashThisWeek: number;
+  dealsClosed: number;
+  outreachSent: number;
+  nextWeekTasks: string;
+}
+
+const EMBED_COLOR_ACCOUNTABILITY = 0x9b59f6;
+
+export function buildAccountabilityEmbed(input: AccountabilityEmbedInput) {
+  const fields: { name: string; value: string; inline?: boolean }[] = [
+    { name: "Videos filmed", value: String(input.videosFilmed), inline: true },
+    { name: "Cash this week", value: `$${input.cashThisWeek.toLocaleString()}`, inline: true },
+    { name: "Deals closed", value: String(input.dealsClosed), inline: true },
+  ];
+  if (input.outreachSent > 0) fields.push({ name: "Outreach sent", value: String(input.outreachSent), inline: true });
+  if (input.wentWell) fields.push({ name: "Went well", value: input.wentWell.slice(0, 1024) });
+  if (input.couldImprove) fields.push({ name: "Could improve", value: input.couldImprove.slice(0, 1024) });
+  if (input.roadblock) fields.push({ name: "Roadblock", value: [input.roadblock, input.roadblockAction].filter(Boolean).join(" → ").slice(0, 1024) });
+  if (input.nextWeekTasks) fields.push({ name: "Next week", value: input.nextWeekTasks.slice(0, 1024) });
+
+  return {
+    title: `${input.clientName} — Week of ${input.weekLabel}`.slice(0, 256),
+    description: input.energyLevel !== null ? `Energy: ${input.energyLevel}/10` : undefined,
+    color: EMBED_COLOR_ACCOUNTABILITY,
+    fields: fields.slice(0, 25),
+    footer: { text: "Creator Launchpad · Weekly Check-In" },
+  };
+}

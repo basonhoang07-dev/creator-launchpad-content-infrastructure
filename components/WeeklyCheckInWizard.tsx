@@ -102,7 +102,7 @@ export default function WeeklyCheckInWizard({
   async function finish() {
     setSaving(true);
     try {
-      await saveWeeklyLog(createClient(), clientId, weekKey, editingLog?.id || null, {
+      const logId = await saveWeeklyLog(createClient(), clientId, weekKey, editingLog?.id || null, {
         campaignEntries,
         ugcOneOff,
         energyLevel,
@@ -117,6 +117,13 @@ export default function WeeklyCheckInWizard({
         gratitude,
         nextWeekTasks,
       });
+      // Best-effort — the check-in is already saved either way, so a Discord
+      // hiccup here should never block the wizard from closing.
+      fetch("/api/discord/accountability", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId, logId }),
+      }).catch(() => {});
       onClose();
     } catch (err) {
       showToast(toastMessage(err, "Couldn't save your check-in — try again."));
