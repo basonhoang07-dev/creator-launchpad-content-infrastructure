@@ -1,28 +1,22 @@
 ---
 name: add-oauth-test-user
-description: Add a Google account as a test user on the Creator Launchpad Google Cloud project so that account can connect Google Drive or Google Calendar. Use this whenever the user asks to "add test user <email>", "add <email> as a test user", "give <email> access to Google Drive/Calendar", or mentions someone new needing to connect Drive or Calendar and hitting a Google sign-in block. Also use it proactively if the user reports that connecting Drive/Calendar failed with a message like "Google hasn't verified this app" going nowhere, or "access blocked" — that's the exact symptom of a missing test user.
+description: Check whether a Google account needs anything done before it can connect Google Drive or Google Calendar on the Creator Launchpad Google Cloud project, and check remaining OAuth user-cap headroom. Use this whenever the user asks to "add test user <email>", "add <email> as a test user", "give <email> access to Google Drive/Calendar", or mentions someone new needing to connect Drive or Calendar and hitting a Google sign-in block. Also use it proactively if the user reports that connecting Drive/Calendar failed with a message like "Google hasn't verified this app" going nowhere, or "access blocked."
 ---
 
-## Why this exists
+## Why this exists, and what actually changed
 
-Creator Launchpad's Google OAuth app (Drive + Calendar integrations) is registered as "External" and unverified by Google. Google will only let an account through the consent screen if that account is on the project's test-user allowlist — otherwise the sign-in is blocked outright, not just shown a warning. There's no public API for managing this list; it's a Google Cloud Console UI-only setting. So the fix is always the same manual page, and this skill automates driving the browser through it instead of walking the user through it by hand each time.
+Creator Launchpad's Google OAuth app (Drive + Calendar integrations) is "External" and unverified by Google. There used to be a "Testing" publish status with an explicit test-user allowlist you had to manually add each email to — an earlier version of this skill was written for that model. **As of the current project state, the app is in "In production" publishing status**, and under that status Google doesn't use an allowlist at all: it uses a lifetime **OAuth user cap** (currently 100 users) that counts anyone who completes the consent flow. Confirmed directly on the project's own Audience page — its copy literally says the user cap "limits the number of users that can grant permission to your app," with no separate add-a-user control anywhere on that page.
 
-## Before you start
+Practical result: **there is nothing to manually add for a new person.** Anyone — including someone who's never touched this project before — can click "Connect" on Drive or Calendar in the app themselves right now, click through Google's "unverified app" warning (Advanced → Go to Creator Launchpad (unsafe)), and it'll work, as long as the 100-user cap isn't exhausted.
 
-You need an already-open Chrome tab (via the `mcp__claude-in-chrome__*` tools) that's signed into the Google account that owns the `cl-content-infrastructure` Google Cloud project (that's the Creator Launchpad app owner's own Google login — same account used for Drive/Calendar OAuth setup). If you don't have a Chrome tab, get one with `tabs_create_mcp` and `navigate` — the user's existing Google session in that browser profile should carry over.
+## What to actually do when this triggers
 
-If the user's request doesn't include an email address, ask for it before doing anything — don't guess or reuse a previously-added address.
+1. Get a Chrome tab (via `mcp__claude-in-chrome__*`) signed into the Google account that owns the `cl-content-infrastructure` project, and navigate to `https://console.cloud.google.com/auth/audience`.
+2. Confirm the project switcher reads **"CL Content Infrastructure"** — if not, switch to it before reading anything below as authoritative.
+3. Confirm **Publishing status** at the top of the page. If it still says **"In production"**, skip straight to step 4. If it's ever switched back to **"Testing"**, the old allowlist model applies instead — look for a "Test users" section with an "Add users" control, and if you find one, that's the one place an explicit add action is real; don't assume the steps above still apply blind, re-read the page.
+4. Read the **OAuth user cap** line (e.g. "2 users / 100 user cap"). Report the number to the user.
+5. Tell the user: no action was needed on your end — the person can just go connect themselves, unless the cap is at or near 100 (Google gives no way to raise or reset this short of full app verification; flag it plainly if it's close, don't try to work around it).
 
-## Steps
+## If the page looks different from this
 
-1. Navigate to `https://console.cloud.google.com/auth/audience`. This is Google's stable URL for the OAuth consent screen's Audience page — it opens on whichever Cloud project was last active in that browser session.
-2. Take a screenshot and confirm the top-left project switcher reads **"CL Content Infrastructure"**. If it's showing a different project, use the project switcher to pick the right one before going further — adding a test user to the wrong project silently does nothing useful and wastes a permission action.
-3. Find the **Test users** section (it's below "OAuth user cap" — you may need to scroll down or click "Show more" if the page is collapsed). Click **"+ Add users"**.
-4. Type the email address into the field that appears, then save/confirm (the exact control has varied — read the page rather than assuming a fixed coordinate; use `find` or `read_page` to locate the input and save action rather than guessing pixel positions).
-5. Screenshot the result and confirm the email now appears in the test users list.
-6. Report back to the user in one or two sentences: confirm the email was added, and remind them the person can now go through Drive/Calendar "Connect" and will still see Google's "unverified app" warning — that's expected, they click **Advanced → Go to Creator Launchpad (unsafe)** to continue.
-
-## If something's off
-
-- **100-user cap reached**: the page shows a running count (e.g. "2 users / 100 user cap"). If it's maxed out, tell the user directly — there's no workaround short of Google verification, don't try to hack around it.
-- **Page layout looks different from what's described here**: Google redesigns this Console UI periodically (it already changed once, from a "Testing" publish-status + explicit allowlist model to this cap-based "External" model). Don't force clicks at guessed coordinates — use `find`/`read_page` to locate the real controls, and if you genuinely can't find an equivalent action, stop and describe what you're seeing to the user rather than guessing.
+Google has already redesigned this Console UI once during this project's lifetime (Testing+allowlist → Production+cap). If what you see doesn't match either model described here, don't force clicks at guessed coordinates — use `find`/`read_page` to locate real controls, and if genuinely unclear, describe what's on the page to the user rather than guessing at what button does what.
