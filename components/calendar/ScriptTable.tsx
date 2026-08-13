@@ -194,7 +194,12 @@ export default function ScriptTable({
       )}
 
       {STATUS_ORDER.map((status) => {
-        const rows = filteredEntries.filter((e) => (e.status || "Unscripted") === status);
+        // Sort explicitly rather than trusting array order — an optimistic
+        // reorder patches sortOrder's VALUE on existing entries in place, it
+        // doesn't move them within the array, so without this a move up/down
+        // click would update the DB but never visibly change row order until
+        // the next full reload.
+        const rows = filteredEntries.filter((e) => (e.status || "Unscripted") === status).sort((a, b) => a.sortOrder - b.sortOrder);
         const sc = STATUS_COLORS[status];
         const isCollapsed = effectiveCollapsed[status];
         if (q && rows.length === 0) return null;
