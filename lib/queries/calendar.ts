@@ -37,6 +37,7 @@ export interface CalendarEntry {
   driveFolderId: string | null;
   driveFolderUrl: string | null;
   comments: Comment[];
+  sortOrder: number;
 }
 
 export interface TrashedEntry {
@@ -89,6 +90,7 @@ function mapEntryRow(row: any): CalendarEntry {
     comments: (row.calendar_comments || [])
       .map((c: any): Comment => ({ id: c.id, authorName: c.author_name, authorRole: c.author_role, text: c.body, createdAt: c.created_at }))
       .sort((a: Comment, b: Comment) => a.createdAt.localeCompare(b.createdAt)),
+    sortOrder: row.sort_order ?? 0,
   };
 }
 
@@ -135,7 +137,7 @@ export async function fetchCalendarPageData(supabase: SupabaseClient, clientId: 
     { data: editorRows },
     { data: integrationRows },
   ] = await Promise.all([
-    supabase.from("calendar_entries").select("*, calendar_comments(*)").eq("client_id", clientId),
+    supabase.from("calendar_entries").select("*, calendar_comments(*)").eq("client_id", clientId).order("sort_order", { ascending: true }),
     supabase.from("retainer_campaigns").select("*, bonus_tiers(*)").eq("client_id", clientId),
     supabase.from("availability_blocks").select("*").eq("client_id", clientId),
     supabase.from("templates").select("*").eq("client_id", clientId),
@@ -225,14 +227,28 @@ async function requestDriveFolder(entryId: string): Promise<{ id: string; url: s
   }
 }
 
+// New scripts land at the bottom of the list by default (matching creation
+// order) — everything already there keeps its position, no renumbering.
+async function nextSortOrder(supabase: SupabaseClient, clientId: string): Promise<number> {
+  const { data } = await supabase
+    .from("calendar_entries")
+    .select("sort_order")
+    .eq("client_id", clientId)
+    .order("sort_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return (data?.sort_order ?? 0) + 1;
+}
+
 export async function insertEntry(
   supabase: SupabaseClient,
   clientId: string,
   fields: { brand: string; title: string; format: string; notes?: string }
 ): Promise<CalendarEntry> {
+  const sortOrder = await nextSortOrder(supabase, clientId);
   const { data, error } = await supabase
     .from("calendar_entries")
-    .insert({ client_id: clientId, ...fields, ...emptyEntryFields, notes: fields.notes || "" })
+    .insert({ client_id: clientId, ...fields, ...emptyEntryFields, sort_order: sortOrder, notes: fields.notes || "" })
     .select()
     .single();
   if (error) throw error;
@@ -255,6 +271,7 @@ const patchToColumns: Record<string, string> = {
   bonusLogged: "bonus_logged",
   format: "format",
   batch: "batch",
+  sortOrder: "sort_order",
 };
 
 export async function updateEntryFields(supabase: SupabaseClient, id: string, patch: Partial<CalendarEntry>) {
@@ -292,6 +309,7 @@ export async function deleteEntry(supabase: SupabaseClient, entry: CalendarEntry
     bonus_logged: entry.bonusLogged,
     drive_folder_id: entry.driveFolderId,
     drive_folder_url: entry.driveFolderUrl,
+    sort_order: entry.sortOrder,
   };
   const { error: insertError } = await supabase.from("calendar_trash").insert({ original_entry: row });
   if (insertError) throw insertError;
@@ -320,6 +338,7 @@ export async function restoreEntry(supabase: SupabaseClient, trashId: string, en
     bonus_logged: entry.bonusLogged,
     drive_folder_id: entry.driveFolderId,
     drive_folder_url: entry.driveFolderUrl,
+    sort_order: entry.sortOrder,
   });
   if (insertError) throw insertError;
   const { error: deleteError } = await supabase.from("calendar_trash").delete().eq("id", trashId);
@@ -431,9 +450,10 @@ export function buildRepeatWinningConceptFields(entry: CalendarEntry) {
 
 export async function insertRepeatEntry(supabase: SupabaseClient, clientId: string, entry: CalendarEntry): Promise<CalendarEntry> {
   const fields = buildRepeatWinningConceptFields(entry);
+  const sortOrder = await nextSortOrder(supabase, clientId);
   const { data, error } = await supabase
     .from("calendar_entries")
-    .insert({ client_id: clientId, ...fields, ...emptyEntryFields })
+    .insert({ client_id: clientId, ...fields, ...emptyEntryFields, sort_order: sortOrder })
     .select()
     .single();
   if (error) throw error;
@@ -484,8 +504,9 @@ export async function materializeDueTemplates(supabase: SupabaseClient, clientId
   const due = templates.filter((t) => t.nextDue <= today);
   if (due.length === 0) return false;
 
+  const baseSortOrder = await nextSortOrder(supabase, clientId);
   const created = await Promise.all(
-    due.map((t) =>
+    due.map((t, i) =>
       supabase
         .from("calendar_entries")
         .insert({
@@ -494,6 +515,7 @@ export async function materializeDueTemplates(supabase: SupabaseClient, clientId
           title: `${t.titleBase} (${t.nextDue})`,
           format: t.format,
           ...emptyEntryFields,
+          sort_order: baseSortOrder + i,
         })
         .select("id")
         .single()

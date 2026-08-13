@@ -39,6 +39,7 @@ function mapEntryRow(row: any): CalendarEntry {
     driveFolderId: row.drive_folder_id || null,
     driveFolderUrl: row.drive_folder_url || null,
     comments: [],
+    sortOrder: row.sort_order ?? 0,
   };
 }
 

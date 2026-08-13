@@ -73,7 +73,8 @@ create table retainer_campaigns (
   -- for it on every script creation.
   drive_folder_id text,
   drive_folder_url text,
-  created_at timestamptz default now()
+  created_at timestamptz default now(),
+  unique (client_id, brand)
 );
 
 create table bonus_tiers (
@@ -110,7 +111,11 @@ create table calendar_entries (
   -- trash the right Drive folder via app/api/drive/trash-script-folder.
   drive_folder_id text,
   drive_folder_url text,
-  created_at timestamptz default now()
+  created_at timestamptz default now(),
+  -- Manual ordering within a status group — defaults to creation order,
+  -- reassigned by swapping values when the user moves a script up/down.
+  -- See db/migration_007_calendar_sort_order.sql.
+  sort_order double precision
 );
 
 create table calendar_comments (

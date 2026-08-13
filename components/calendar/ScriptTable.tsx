@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { ChevronDown, ChevronRight, FileText, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronUp, FileText, Plus, Trash2 } from "lucide-react";
 import { C, STATUS_GROUPS, STATUS_COLORS } from "@/lib/theme";
 import { Card, Button, inputStyle } from "@/components/ui";
 import { useSession } from "@/components/SessionProvider";
@@ -104,6 +104,7 @@ export default function ScriptTable({
   onUpdate,
   onDelete,
   onQuickAdd,
+  onReorder,
 }: {
   entries: CalendarEntry[];
   editors: Editor[];
@@ -111,6 +112,7 @@ export default function ScriptTable({
   onUpdate: (id: string, patch: Partial<CalendarEntry>) => void;
   onDelete: (entry: CalendarEntry) => void;
   onQuickAdd: (status: string, title: string) => void;
+  onReorder: (id: string, direction: "up" | "down") => void;
 }) {
   const { profile } = useSession();
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({ Unscripted: true });
@@ -211,16 +213,39 @@ export default function ScriptTable({
                     <thead>
                       <tr style={{ textAlign: "left", borderBottom: `1px solid ${C.border}` }}>
                         <th style={{ padding: "8px 6px", width: 28 }}></th>
+                        <th style={{ padding: "8px 2px", width: 20 }}></th>
                         {["Reel", "Form", "Filming date", "Editor", "Final vid", "Raw video", "Reference", ""].map((h) => (
                           <th key={h} style={{ padding: "8px 12px", fontSize: 10, color: C.textFaint, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", whiteSpace: "nowrap" }}>{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {rows.map((c) => (
+                      {rows.map((c, i) => (
                         <tr key={c.id} style={{ borderBottom: `1px solid ${C.border}`, background: selected.has(c.id) ? C.accentDim : "transparent" }}>
                           <td style={{ padding: "9px 6px", textAlign: "center" }}>
                             <input type="checkbox" checked={selected.has(c.id)} onChange={() => toggleSelected(c.id)} />
+                          </td>
+                          <td style={{ padding: "4px 2px" }}>
+                            {!q && (
+                              <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                                <button
+                                  onClick={() => onReorder(c.id, "up")}
+                                  disabled={i === 0}
+                                  title="Move up"
+                                  style={{ background: "none", border: "none", padding: 1, cursor: i === 0 ? "default" : "pointer", color: i === 0 ? C.textFaint : C.textMuted, opacity: i === 0 ? 0.35 : 1 }}
+                                >
+                                  <ChevronUp size={13} />
+                                </button>
+                                <button
+                                  onClick={() => onReorder(c.id, "down")}
+                                  disabled={i === rows.length - 1}
+                                  title="Move down"
+                                  style={{ background: "none", border: "none", padding: 1, cursor: i === rows.length - 1 ? "default" : "pointer", color: i === rows.length - 1 ? C.textFaint : C.textMuted, opacity: i === rows.length - 1 ? 0.35 : 1 }}
+                                >
+                                  <ChevronDown size={13} />
+                                </button>
+                              </div>
+                            )}
                           </td>
                           <td style={{ padding: "9px 12px", cursor: "pointer", maxWidth: 220 }} onClick={() => onOpen(c)} title="Open full script, notes & drive folder">
                             <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.title}</div>
@@ -284,7 +309,7 @@ export default function ScriptTable({
                         </tr>
                       ))}
                       <tr>
-                        <td colSpan={9} style={{ padding: "6px 12px" }}>
+                        <td colSpan={10} style={{ padding: "6px 12px" }}>
                           <QuickAddRow onAdd={(title) => onQuickAdd(status, title)} />
                         </td>
                       </tr>

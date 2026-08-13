@@ -66,7 +66,7 @@ export default function FilmingNeedsPage({
                       <Film size={14} color={C.accentLight} />
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600 }}>{c.title}</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{c.title}</div>
                       <div style={{ fontSize: 11, color: C.textMuted }}>{c.brand} · {c.format}</div>
                     </div>
                     <span className="cl-mono" style={{ background: sc.bg, color: sc.color, fontSize: 10, padding: "3px 8px", borderRadius: 6, fontWeight: 700, flexShrink: 0 }}>{c.status || "Unscripted"}</span>

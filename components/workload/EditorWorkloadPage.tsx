@@ -65,7 +65,7 @@ export default function EditorWorkloadPage({
             </Card>
           </div>
 
-          <SectionHeader eyebrow="Coming up" title="Upcoming shoots" />
+          <SectionHeader eyebrow="Coming up" title="Upcoming edits" />
           <div style={{ display: "grid", gap: 8, marginBottom: 28 }}>
             {upcoming.slice(0, 8).map((c) => {
               const sc = STATUS_COLORS[c.status || "Unscripted"];

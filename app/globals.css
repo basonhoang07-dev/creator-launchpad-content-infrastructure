@@ -14,6 +14,11 @@ html, body {
 .cl-scroll::-webkit-scrollbar-track { background: transparent; }
 .cl-scroll::-webkit-scrollbar-thumb { background: #262626; border-radius: 4px; }
 input, textarea, select { font-family: 'Inter', sans-serif; }
+/* Chrome/Windows renders a <select>'s dropdown *list* with its own default
+   white popup background regardless of the select's own CSS — without this,
+   every dropdown's light theme text (inherited from .cl-root) turns
+   invisible against it the moment the list opens. */
+select option { background: #1D1D1D; color: #F2F2F0; }
 input:focus, textarea:focus, select:focus, button:focus-visible { outline: 2px solid #9B6EF3; outline-offset: 1px; }
 .cl-spin { animation: cl-spin-kf 0.8s linear infinite; }
 @keyframes cl-spin-kf { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

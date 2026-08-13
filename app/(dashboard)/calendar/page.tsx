@@ -375,6 +375,23 @@ function ContentCalendarInner({ clientId }: { clientId: string }) {
     await updateEntry(id, { date: newDate });
   }
 
+  // Moves a script up/down among its same-status, same-board neighbors —
+  // matching exactly what's visually adjacent to it in ScriptTable — by
+  // swapping sortOrder with whichever entry it's trading places with.
+  function moveEntry(id: string, direction: "up" | "down") {
+    const entry = entries.find((e) => e.id === id);
+    if (!entry) return;
+    const group = entries
+      .filter((e) => (e.status || "Unscripted") === (entry.status || "Unscripted"))
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+    const idx = group.findIndex((e) => e.id === id);
+    const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= group.length) return;
+    const other = group[swapIdx];
+    updateEntry(entry.id, { sortOrder: other.sortOrder });
+    updateEntry(other.id, { sortOrder: entry.sortOrder });
+  }
+
   async function saveSessionCapacity(value: string) {
     if (!activeCampaign) return;
     try {
@@ -544,7 +561,7 @@ function ContentCalendarInner({ clientId }: { clientId: string }) {
           )}
 
           {view === "table" && (
-            <ScriptTable entries={entries} editors={data.editors} onOpen={setActiveEntry} onUpdate={updateEntry} onDelete={handleDeleteEntry} onQuickAdd={quickAddEntry} />
+            <ScriptTable entries={entries} editors={data.editors} onOpen={setActiveEntry} onUpdate={updateEntry} onDelete={handleDeleteEntry} onQuickAdd={quickAddEntry} onReorder={moveEntry} />
           )}
 
           {view === "calendar" && (
