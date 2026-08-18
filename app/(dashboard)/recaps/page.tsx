@@ -11,6 +11,7 @@ import { MessageSquare, Plus } from "lucide-react";
 import { C } from "@/lib/theme";
 import { Card, Badge, Button, SectionHeader, EmptyState } from "@/components/ui";
 import { createClient } from "@/lib/supabase";
+import { parseDateOnly } from "@/lib/helpers";
 import { useSession } from "@/components/SessionProvider";
 import { useDefaultScopedClientId } from "@/components/useDefaultClient";
 import { fetchRecaps, toggleActionItem, type Recap } from "@/lib/queries/recaps";
@@ -108,7 +109,7 @@ function RecapsInner({ clientId }: { clientId: string }) {
             <Card key={r.id} onClick={() => setActiveRecapId(r.id)} style={{ cursor: "pointer" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
                 <Badge tone={isDone ? "success" : "accent"}>{isDone ? "Done" : "In progress"}</Badge>
-                <span className="cl-mono" style={{ fontSize: 11, color: C.textFaint }}>{new Date(r.date).toLocaleDateString(undefined, { year: "numeric", month: "2-digit", day: "2-digit" })}</span>
+                <span className="cl-mono" style={{ fontSize: 11, color: C.textFaint }}>{parseDateOnly(r.date).toLocaleDateString(undefined, { year: "numeric", month: "2-digit", day: "2-digit" })}</span>
               </div>
               <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6, lineHeight: 1.3 }}>{r.title}</div>
               <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12, lineHeight: 1.5, overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>

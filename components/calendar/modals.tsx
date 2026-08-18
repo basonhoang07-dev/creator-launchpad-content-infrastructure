@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { CalendarCheck, Check, ChevronRight, Film, Lock, Wand2 } from "lucide-react";
 import { C } from "@/lib/theme";
 import { Button, Card, Field, Modal, SectionHeader, Badge, inputStyle } from "@/components/ui";
+import { parseDateOnly } from "@/lib/helpers";
 
 export interface ScheduleSummaryEntry {
   id: string;
@@ -45,7 +46,7 @@ export function SchedulePreviewModal({ summary, onOpenEntry, onClose }: { summar
         {dateKeys.map((date) => (
           <div key={date}>
             <div className="cl-mono" style={{ fontSize: 11.5, color: C.accentLight, marginBottom: 6, fontWeight: 700 }}>
-              {new Date(date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+              {parseDateOnly(date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
             </div>
             <div style={{ display: "grid", gap: 6 }}>
               {byDate[date].map((c) => (

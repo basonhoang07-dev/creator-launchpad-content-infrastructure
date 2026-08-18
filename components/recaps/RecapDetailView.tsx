@@ -4,6 +4,7 @@ import React from "react";
 import { Check, ChevronLeft, Play } from "lucide-react";
 import { C } from "@/lib/theme";
 import { Card, Button } from "@/components/ui";
+import { parseDateOnly } from "@/lib/helpers";
 import type { Recap } from "@/lib/queries/recaps";
 
 export default function RecapDetailView({ recap, onToggleItem, onBack }: { recap: Recap; onToggleItem: (itemId: string) => void; onBack: () => void }) {
@@ -24,7 +25,7 @@ export default function RecapDetailView({ recap, onToggleItem, onBack }: { recap
         </div>
         <h1 className="cl-display" style={{ fontSize: 24, fontWeight: 700, margin: "0 0 8px" }}>{recap.title}</h1>
         <div style={{ fontSize: 12.5, color: C.textMuted, marginBottom: 16 }}>
-          {new Date(recap.date).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}
+          {parseDateOnly(recap.date).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}
         </div>
         {recap.recordingUrl ? (
           <a href={recap.recordingUrl} target="_blank" rel="noopener noreferrer">

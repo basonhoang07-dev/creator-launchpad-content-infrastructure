@@ -219,7 +219,7 @@ export default function AvailabilityEditor({
                   <div key={d} style={{ background: C.surface, border: `1px solid ${isToday ? C.accent : C.border}`, borderRadius: 10, padding: 8, minHeight: 96, display: "flex", flexDirection: "column", gap: 4 }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                       <span className="cl-mono" style={{ fontSize: 11, fontWeight: 700, color: isToday ? C.accentLight : C.textMuted }}>
-                        {new Date(d).getDate()}
+                        {parseDateOnly(d).getDate()}
                       </span>
                       <button onClick={() => setModalDate(d)} style={{ background: "none", border: "none", color: C.textFaint, cursor: "pointer", padding: 2 }}>
                         <Plus size={12} />

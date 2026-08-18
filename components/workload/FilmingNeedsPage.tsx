@@ -4,7 +4,7 @@ import React from "react";
 import { CalendarDays, ChevronRight, Film } from "lucide-react";
 import { C, STATUS_COLORS } from "@/lib/theme";
 import { Card, Button, Badge, SectionHeader, EmptyState } from "@/components/ui";
-import { isSameMonth, todayPlus } from "@/lib/helpers";
+import { isSameMonth, todayPlus, parseDateOnly } from "@/lib/helpers";
 import type { WorkloadData } from "@/lib/queries/workload";
 import type { CalendarEntry } from "@/lib/queries/calendar";
 
@@ -51,7 +51,7 @@ export default function FilmingNeedsPage({
         {dateKeys.map((date) => (
           <div key={date}>
             <div className="cl-mono" style={{ fontSize: 11.5, color: C.accentLight, marginBottom: 6, fontWeight: 700 }}>
-              {new Date(date).toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}
+              {parseDateOnly(date).toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}
             </div>
             <div style={{ display: "grid", gap: 6 }}>
               {byDate[date].map((c) => {

@@ -22,7 +22,7 @@ import { useSession } from "@/components/SessionProvider";
 import { useDefaultScopedClientId } from "@/components/useDefaultClient";
 import { fetchHomeData, type HomeData } from "@/lib/queries/home";
 import { fetchCommunityOverview, type CommunityData } from "@/lib/queries/community";
-import { todayPlus, getWeekKey, formatWeekLabel, isSameMonth, isWeekActuallyLogged, monthlyIncomeHistory, type WeeklyLog } from "@/lib/helpers";
+import { todayPlus, getWeekKey, formatWeekLabel, isSameMonth, isWeekActuallyLogged, monthlyIncomeHistory, parseDateOnly, type WeeklyLog } from "@/lib/helpers";
 import CommunityOverview from "@/components/CommunityOverview";
 import WeeklyCheckInWizard from "@/components/WeeklyCheckInWizard";
 import CheckInDetailModal from "@/components/CheckInDetailModal";
@@ -221,7 +221,7 @@ export default function HomePage() {
     needsItems.push({
       icon: MessageSquare,
       title: `${pending.length} action item${pending.length > 1 ? "s" : ""} from "${r.title}"`,
-      sub: `From your ${new Date(r.date).toLocaleDateString(undefined, { month: "short", day: "numeric" })} call`,
+      sub: `From your ${parseDateOnly(r.date).toLocaleDateString(undefined, { month: "short", day: "numeric" })} call`,
       action: "Open recap",
       onClick: () => router.push("/recaps"),
     });
