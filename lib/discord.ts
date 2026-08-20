@@ -85,9 +85,25 @@ export async function listSupportChannels(): Promise<SupportChannel[]> {
 
 export async function findChannelIdByClientName(clientName: string): Promise<string | null> {
   const channels = await listSupportChannels();
-  const target = normalizeChannelName(clientName);
-  const match = channels.find((c) => normalizeChannelName(c.name) === target);
-  return match?.id || null;
+  const trimmedName = clientName.trim();
+  const target = normalizeChannelName(trimmedName);
+  const exact = channels.find((c) => normalizeChannelName(c.name) === target);
+  if (exact) return exact.id;
+
+  // Real channels are overwhelmingly named after a first name or Discord
+  // username (e.g. "👤-jack"), while clients are stored under their full
+  // name (e.g. "Jack Ford") — a full-name match alone misses most of them.
+  // Best-guess fallback, same caveat as the rest of this function: can
+  // collide if two clients share a first name, which is exactly what the
+  // manual discord_channel_id override (Admin Panel → Recap delivery)
+  // exists to override precisely.
+  const firstWord = trimmedName.split(/\s+/)[0];
+  if (firstWord && firstWord !== trimmedName) {
+    const firstTarget = normalizeChannelName(firstWord);
+    const firstMatch = channels.find((c) => normalizeChannelName(c.name) === firstTarget);
+    if (firstMatch) return firstMatch.id;
+  }
+  return null;
 }
 
 export interface RecapEmbedInput {

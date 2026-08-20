@@ -86,6 +86,28 @@ describe("findChannelIdByClientName", () => {
     expect(await findChannelIdByClientName("Ivan Tong")).toBe("chan-ivan");
   });
 
+  it("falls back to matching just the first word of a multi-word client name against a first-name-only channel", async () => {
+    process.env.DISCORD_BOT_TOKEN = "tok";
+    process.env.DISCORD_SUPPORT_CATEGORY_ID = "cat1";
+    process.env.DISCORD_GUILD_ID = "guild1";
+    fetchMock.mockResolvedValue({ ok: true, json: async () => [{ id: "chan-jack", name: "👤-jack", parent_id: "cat1" }] });
+    expect(await findChannelIdByClientName("Jack Ford")).toBe("chan-jack");
+  });
+
+  it("prefers an exact full-name match over the first-word fallback", async () => {
+    process.env.DISCORD_BOT_TOKEN = "tok";
+    process.env.DISCORD_SUPPORT_CATEGORY_ID = "cat1";
+    process.env.DISCORD_GUILD_ID = "guild1";
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => [
+        { id: "chan-jack", name: "👤-jack", parent_id: "cat1" },
+        { id: "chan-jackford", name: "👤-jackford", parent_id: "cat1" },
+      ],
+    });
+    expect(await findChannelIdByClientName("Jack Ford")).toBe("chan-jackford");
+  });
+
   it("returns null when no channel in the category matches", async () => {
     process.env.DISCORD_BOT_TOKEN = "tok";
     process.env.DISCORD_SUPPORT_CATEGORY_ID = "cat1";
