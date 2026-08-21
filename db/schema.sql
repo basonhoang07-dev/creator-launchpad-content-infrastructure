@@ -238,7 +238,11 @@ create table recap_action_items (
   id uuid primary key default gen_random_uuid(),
   recap_id uuid references recaps(id) on delete cascade not null,
   body text not null,
-  done boolean default false
+  done boolean default false,
+  -- Optional short deadline phrase ("this month", "Wed") — only populated
+  -- when the transcript actually mentions one. See
+  -- db/migration_009_recap_action_item_due.sql.
+  due text
 );
 
 create table recap_decisions (

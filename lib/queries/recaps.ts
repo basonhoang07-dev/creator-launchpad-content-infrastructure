@@ -10,6 +10,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export interface ActionItem {
   id: string;
   text: string;
+  due: string | null;
   done: boolean;
 }
 
@@ -32,7 +33,7 @@ function mapRow(row: any): Recap {
     attendeeEmail: row.attendee_email,
     tldr: row.tldr || "",
     recordingUrl: row.recording_url,
-    actionItems: (row.recap_action_items || []).map((a: any) => ({ id: a.id, text: a.body, done: a.done })),
+    actionItems: (row.recap_action_items || []).map((a: any) => ({ id: a.id, text: a.body, due: a.due, done: a.done })),
     decisions: (row.recap_decisions || []).map((d: any) => d.body),
   };
 }

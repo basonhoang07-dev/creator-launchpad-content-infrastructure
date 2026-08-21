@@ -117,7 +117,7 @@ export async function POST(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   if (parsed.actionItems?.length) {
-    await admin.from("recap_action_items").insert(parsed.actionItems.map((text) => ({ recap_id: recap.id, body: text, done: false })));
+    await admin.from("recap_action_items").insert(parsed.actionItems.map((item) => ({ recap_id: recap.id, body: item.body, due: item.due, done: false })));
   }
   if (parsed.decisions?.length) {
     await admin.from("recap_decisions").insert(parsed.decisions.map((text) => ({ recap_id: recap.id, body: text })));

@@ -68,7 +68,14 @@ export default function RecapDetailView({ recap, onToggleItem, onBack }: { recap
                   >
                     {item.done && <Check size={12} color="#08130D" strokeWidth={3} />}
                   </span>
-                  <span style={{ fontSize: 13, lineHeight: 1.5, color: item.done ? C.textFaint : C.text, textDecoration: item.done ? "line-through" : "none" }}>{item.text}</span>
+                  <span style={{ fontSize: 13, lineHeight: 1.5, color: item.done ? C.textFaint : C.text, textDecoration: item.done ? "line-through" : "none" }}>
+                    {item.text}
+                    {item.due && (
+                      <span className="cl-mono" style={{ marginLeft: 8, fontSize: 10.5, color: C.accentLight, fontWeight: 700, textDecoration: "none" }}>
+                        Due {item.due}
+                      </span>
+                    )}
+                  </span>
                 </button>
               ))}
               {recap.actionItems.length === 0 && <div style={{ fontSize: 12.5, color: C.textFaint }}>No action items from this call.</div>}

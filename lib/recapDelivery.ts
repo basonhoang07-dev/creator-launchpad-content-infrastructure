@@ -63,7 +63,7 @@ interface RecapRow {
 interface ParsedRecap {
   title: string;
   tldr: string;
-  actionItems: string[];
+  actionItems: { body: string; due: string | null }[];
   decisions: string[];
 }
 
@@ -119,7 +119,7 @@ async function emailClient(client: RecapClient, recap: RecapRow, parsed: ParsedR
   const html = `
     <h2>${escapeHtml(parsed.title)}</h2>
     <p>${escapeHtml(parsed.tldr)}</p>
-    ${parsed.actionItems.length ? `<h3>To-dos</h3><ul>${parsed.actionItems.map((t) => `<li>${escapeHtml(t)}</li>`).join("")}</ul>` : ""}
+    ${parsed.actionItems.length ? `<h3>To-dos</h3><ul>${parsed.actionItems.map((item) => `<li>${escapeHtml(item.body)}${item.due ? ` <i>(Due ${escapeHtml(item.due)})</i>` : ""}</li>`).join("")}</ul>` : ""}
     ${parsed.decisions.length ? `<h3>Decisions</h3><ul>${parsed.decisions.map((t) => `<li>${escapeHtml(t)}</li>`).join("")}</ul>` : ""}
     ${recap.recording_url ? `<p><a href="${recap.recording_url}">Watch the recording</a></p>` : ""}
   `.trim();
@@ -171,7 +171,7 @@ async function writeObsidianNote(client: RecapClient, recap: RecapRow, parsed: P
       parsed.tldr,
       "",
       "## To-dos",
-      ...(parsed.actionItems.length ? parsed.actionItems.map((t) => `- [ ] ${t}`) : ["_none_"]),
+      ...(parsed.actionItems.length ? parsed.actionItems.map((item) => `- [ ] ${item.body}${item.due ? ` (Due ${item.due})` : ""}`) : ["_none_"]),
       "",
       "## Decisions",
       ...(parsed.decisions.length ? parsed.decisions.map((t) => `- ${t}`) : ["_none_"]),

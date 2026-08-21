@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
 
   if (parsed.actionItems?.length) {
     await supabase.from("recap_action_items").insert(
-      parsed.actionItems.map((text) => ({ recap_id: recap.id, body: text, done: false }))
+      parsed.actionItems.map((item) => ({ recap_id: recap.id, body: item.body, due: item.due, done: false }))
     );
   }
   if (parsed.decisions?.length) {

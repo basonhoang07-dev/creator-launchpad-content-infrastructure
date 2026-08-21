@@ -23,11 +23,15 @@ ${transcript}
 Task: produce a structured recap of this call.
 - title: a short, specific title capturing what this call was actually about — not generic like "Coaching Call"
 - tldr: 2-4 sentences summarizing the key outcome and what's changing going forward
-- actionItems: concrete tasks for the CLIENT to do (not the coach), phrased as clear, specific action items
+- actionItems: concrete tasks for the CLIENT to do (not the coach), each with:
+  - body: a clear, specific action item, phrased as a full sentence ending in a period
+  - due: a short deadline phrase in the coach's own words if — and only if — the transcript
+    actually states or clearly implies one for that item (e.g. "this month", "Wed", "by Friday").
+    null if no deadline was mentioned — never invent one.
 - decisions: a short list of decisions or agreements that got locked in during the call
 
 Respond with ONLY valid JSON, no markdown fences, no preamble. Exact shape:
-{"title":"...","tldr":"...","actionItems":["...","..."],"decisions":["...","..."]}`;
+{"title":"...","tldr":"...","actionItems":[{"body":"...","due":"..." | null}],"decisions":["...","..."]}`;
 
   const message = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
@@ -39,7 +43,7 @@ Respond with ONLY valid JSON, no markdown fences, no preamble. Exact shape:
   return JSON.parse(raw.replace(/```json|```/g, "").trim()) as {
     title: string;
     tldr: string;
-    actionItems: string[];
+    actionItems: { body: string; due: string | null }[];
     decisions: string[];
   };
 }

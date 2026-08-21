@@ -6,7 +6,7 @@ import { deliverRecap } from "./recapDelivery";
 
 const client = { id: "c1", name: "Adam", google_meet_email: null as string | null, discord_webhook_url: null as string | null };
 const recap = { id: "r1", title: "Weekly check-in", recap_date: "2026-07-22", recording_url: "https://fathom.video/x", transcript: "Coach: hey\nClient: hey" };
-const parsed = { title: "Weekly check-in", tldr: "Covered content pacing.", actionItems: ["Post 3x this week"], decisions: ["Switch to daily uploads"] };
+const parsed = { title: "Weekly check-in", tldr: "Covered content pacing.", actionItems: [{ body: "Post 3x this week", due: null }], decisions: ["Switch to daily uploads"] };
 
 describe("deliverRecap", () => {
   const originalEnv = { ...process.env };
@@ -42,7 +42,7 @@ describe("deliverRecap", () => {
     expect(url).toBe("https://discord.com/api/webhooks/xyz");
     const body = JSON.parse(opts.body);
     expect(body.embeds[0].title).toContain("Weekly check-in");
-    expect(body.embeds[0].fields.some((f: any) => f.value === "Post 3x this week")).toBe(true);
+    expect(body.embeds[0].fields.some((f: any) => f.value === "Adam — Post 3x this week")).toBe(true);
   });
 
   it("posts via the bot when a channel ID and bot token are both set, and skips the webhook fallback", async () => {

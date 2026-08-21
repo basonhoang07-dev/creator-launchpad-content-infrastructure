@@ -106,11 +106,16 @@ export async function findChannelIdByClientName(clientName: string): Promise<str
   return null;
 }
 
+export interface RecapActionItemInput {
+  body: string;
+  due: string | null;
+}
+
 export interface RecapEmbedInput {
   clientName: string;
   title: string;
   tldr: string;
-  actionItems: string[];
+  actionItems: RecapActionItemInput[];
   decisions: string[];
   recordingUrl: string | null;
   recapDate: string;
@@ -120,9 +125,17 @@ export interface RecapEmbedInput {
 // bolded Action/Decision fields, footer).
 const EMBED_COLOR_WHITE = 0xffffff;
 
+// Matches Nova's own "Action" field text exactly: repeats the client's name
+// per item, and appends "— Due X" only when the call transcript actually
+// stated a deadline for that item (generateRecapFromTranscript never
+// fabricates one — due is null when none was mentioned).
+function formatActionValue(clientName: string, item: RecapActionItemInput): string {
+  return item.due ? `${clientName} — ${item.body} — Due ${item.due}` : `${clientName} — ${item.body}`;
+}
+
 export function buildRecapEmbed(input: RecapEmbedInput) {
   const fields: { name: string; value: string }[] = [];
-  input.actionItems.forEach((text) => fields.push({ name: "Action", value: text.slice(0, 1024) }));
+  input.actionItems.forEach((item) => fields.push({ name: "Action", value: formatActionValue(input.clientName, item).slice(0, 1024) }));
   input.decisions.forEach((text) => fields.push({ name: "Decision", value: text.slice(0, 1024) }));
 
   return {

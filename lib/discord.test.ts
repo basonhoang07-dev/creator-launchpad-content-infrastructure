@@ -7,7 +7,10 @@ describe("buildRecapEmbed", () => {
       clientName: "Adam",
       title: "Weekly check-in",
       tldr: "Covered pacing.",
-      actionItems: ["Post 3x this week", "Film Tuesday"],
+      actionItems: [
+        { body: "Post 3x this week", due: null },
+        { body: "Film Tuesday", due: null },
+      ],
       decisions: ["Switch to daily uploads"],
       recordingUrl: "https://fathom.video/x",
       recapDate: "2026-07-22",
@@ -18,9 +21,28 @@ describe("buildRecapEmbed", () => {
     expect(embed.url).toBe("https://fathom.video/x");
     expect(embed.footer.text).toBe("Creator Launchpad · 2026-07-22");
     expect(embed.fields).toEqual([
-      { name: "Action", value: "Post 3x this week" },
-      { name: "Action", value: "Film Tuesday" },
+      { name: "Action", value: "Adam — Post 3x this week" },
+      { name: "Action", value: "Adam — Film Tuesday" },
       { name: "Decision", value: "Switch to daily uploads" },
+    ]);
+  });
+
+  it("appends '— Due X' to an action item's value only when a deadline was given, matching Nova's own format", () => {
+    const embed = buildRecapEmbed({
+      clientName: "Akira",
+      title: "July Team Reset",
+      tldr: "",
+      actionItems: [
+        { body: "Finish the closing module.", due: "Wed" },
+        { body: "Build a dedicated sales-call spot.", due: null },
+      ],
+      decisions: [],
+      recordingUrl: null,
+      recapDate: "2026-07-06",
+    });
+    expect(embed.fields).toEqual([
+      { name: "Action", value: "Akira — Finish the closing module. — Due Wed" },
+      { name: "Action", value: "Akira — Build a dedicated sales-call spot." },
     ]);
   });
 
