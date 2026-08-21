@@ -84,6 +84,23 @@ function KPIPageInner({ clientId }: { clientId: string }) {
     reload();
   }, [reload]);
 
+  // Same staleness fix as Home (app/(dashboard)/page.tsx): Next's client-side
+  // router cache can keep this page's instance alive without re-fetching
+  // when you navigate away and back within ~30s, so submitting a weekly
+  // check-in elsewhere (which is what "actual this month" is computed from)
+  // never showed up here until a hard refresh. Re-fetch on tab focus too.
+  useEffect(() => {
+    function onVisible() {
+      if (document.visibilityState === "visible") reload();
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, [reload]);
+
   const totals = campaigns.reduce(
     (acc, c) => {
       const monthly = (Number(c.rate) || 0) * (Number(c.maxPosts) || 0) * 30;

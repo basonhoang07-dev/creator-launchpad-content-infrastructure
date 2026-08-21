@@ -8,9 +8,16 @@
 // app/(dashboard)/layout.tsx and handed down here as the initial value.
 //
 // `workingClient` is the one piece of prototype "session" state that stays
-// client-only and unpersisted, same as before: it's the Creative Director's
-// "which client am I working in right now" picker (prototype: session.clientName),
-// UI framing only, not a real data-scoping mechanism.
+// client-only and unpersisted, same as before: it's the "which client am I
+// working in right now" picker (prototype: session.clientName), available to
+// both Creative Director and Admin. It's a real data-scoping mechanism for
+// both (see useDefaultScopedClientId) — for Admin specifically it's also an
+// identity preview: effectiveRole below flips to "Client" whenever an Admin
+// has one selected, so pages that render a fundamentally different
+// experience per role (Home, Sidebar nav, Admin Panel access) show what that
+// client actually sees instead of the Admin's own view. Nothing about the
+// user's real permissions changes — every write still goes through as the
+// real Admin, enforced server-side — this only affects what renders.
 
 import React, { createContext, useCallback, useContext, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -41,6 +48,12 @@ interface SessionContextValue {
   isAdmin: boolean;
   workingClient: WorkingClient | null;
   setWorkingClient: (client: WorkingClient | null) => void;
+  // profile.role, except an Admin previewing a client via "Working in" reads
+  // as "Client" — see the comment above workingClient. Use this (not
+  // profile.role) for anything that should render the client's actual
+  // experience while previewing; use profile.role directly only for things
+  // tied to the real account (e.g. who can open the "Working in" picker).
+  effectiveRole: Role;
   signOut: () => Promise<void>;
 }
 
@@ -72,6 +85,7 @@ export function SessionProvider({
       isAdmin: profile.role === "Admin",
       workingClient,
       setWorkingClient,
+      effectiveRole: profile.role === "Admin" && workingClient ? "Client" : profile.role,
       signOut,
     }),
     [user, profile, workingClient, signOut]

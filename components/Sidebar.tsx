@@ -38,7 +38,7 @@ export default function Sidebar({
   mobileOpen: boolean;
   onCloseMobile: () => void;
 }) {
-  const { profile, workingClient, setWorkingClient, signOut } = useSession();
+  const { profile, effectiveRole, workingClient, setWorkingClient, signOut } = useSession();
   const router = useRouter();
   const pathname = usePathname();
   const { showToast } = useToast();
@@ -74,8 +74,10 @@ export default function Sidebar({
     ...(seesFinancials ? [{ id: "kpi", href: "/kpi", label: "KPI Trackers", icon: DollarSign }] : []),
     ...(seesFinancials ? [{ id: "leaderboard", href: "/leaderboard", label: "Leaderboard", icon: Trophy }] : []),
     // SOP Libraries: admin-only while it's still being built out. Flip this
-    // back to unconditional once it's ready to publish to everyone.
-    ...(profile.role === "Admin" ? [{ id: "sops", href: "/sops", label: "SOP Libraries", icon: BookOpen }] : []),
+    // back to unconditional once it's ready to publish to everyone. Gated on
+    // effectiveRole (not profile.role) so it disappears while an Admin is
+    // previewing a client — that client never sees it either.
+    ...(effectiveRole === "Admin" ? [{ id: "sops", href: "/sops", label: "SOP Libraries", icon: BookOpen }] : []),
     { id: "calendar", href: "/calendar", label: "Content Calendar", icon: CalendarDays },
     ...(!isCreativeDirector ? [{ id: "integrations", href: "/integrations", label: "Integrations", icon: Plug }] : []),
   ];
@@ -88,7 +90,9 @@ export default function Sidebar({
   if (profile.role === "Client" || profile.role === "Admin") {
     items.push({ id: "recaps", href: "/recaps", label: "Call Recaps", icon: MessageSquare });
   }
-  if (profile.role === "Admin") items.push({ id: "admin", href: "/admin", label: "Admin Panel", icon: ShieldCheck });
+  // effectiveRole, not profile.role — hidden while an Admin is previewing a
+  // client via "Working in", same reasoning as the SOP Libraries gate above.
+  if (effectiveRole === "Admin") items.push({ id: "admin", href: "/admin", label: "Admin Panel", icon: ShieldCheck });
 
   function handleGlobalSearchNavigate(r: SearchResult) {
     if (r.kind === "sop") router.push(`/sops?tab=${r.tab}&sop=${r.sopId}`);

@@ -14,7 +14,7 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import {
-  AlertCircle, Check, ChevronRight, Megaphone, Star, Trash2, UserPlus, Users, Wallet, X,
+  AlertCircle, Check, ChevronRight, Megaphone, ShieldCheck, Star, Trash2, UserPlus, Users, Wallet, X,
 } from "lucide-react";
 import { C } from "@/lib/theme";
 import { Card, Badge, Button, Field, Modal, SectionHeader, EmptyState, inputStyle, Avatar } from "@/components/ui";
@@ -35,7 +35,23 @@ import { useToast, toastMessage } from "@/components/Toast";
 
 type Tab = "accounts" | "checkins" | "recap" | "announcement" | "danger";
 
+// The page itself had no role gate at all — a non-Admin who simply typed
+// /admin got the full component and whatever its own (mostly org-scoped,
+// not Admin-scoped) RLS-permitted queries returned. Gated here the same way
+// KPI Trackers/Leaderboard already gate their own role restrictions,
+// checked before any of AdminPanelInner's other hooks run. Uses
+// effectiveRole (not profile.role) so it also closes while a real Admin is
+// previewing a client via "Working in" — that client never sees this page,
+// so neither should the preview.
 export default function AdminPanel() {
+  const { effectiveRole } = useSession();
+  if (effectiveRole !== "Admin") {
+    return <EmptyState icon={ShieldCheck} text="Admin Panel is only available to Admin accounts." />;
+  }
+  return <AdminPanelInner />;
+}
+
+function AdminPanelInner() {
   const { profile, signOut } = useSession();
   const { showToast } = useToast();
   const defaultClientId = useDefaultScopedClientId();

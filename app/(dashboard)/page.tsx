@@ -28,7 +28,7 @@ import WeeklyCheckInWizard from "@/components/WeeklyCheckInWizard";
 import CheckInDetailModal from "@/components/CheckInDetailModal";
 
 export default function HomePage() {
-  const { profile } = useSession();
+  const { profile, effectiveRole } = useSession();
   const clientId = useDefaultScopedClientId();
   const router = useRouter();
 
@@ -47,16 +47,16 @@ export default function HomePage() {
       setHomeData(data);
       setLoading(false);
     }
-    if (profile.role === "Admin") {
+    if (effectiveRole === "Admin") {
       const data = await fetchCommunityOverview(supabase, profile.organization_id);
       setCommunity(data);
     }
-  }, [clientId, profile.role, profile.organization_id, homeData]);
+  }, [clientId, effectiveRole, profile.organization_id, homeData]);
 
   useEffect(() => {
     reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clientId, profile.role, profile.organization_id]);
+  }, [clientId, effectiveRole, profile.organization_id]);
 
   // Client components fetch once on mount, but Next's client-side router
   // cache can keep this page's instance alive (and its data un-refetched)
@@ -89,7 +89,7 @@ export default function HomePage() {
   const thisWeekLog = homeData?.weeklyLogs.find((l) => l.weekOf === currentWeekKey) || null;
 
   useEffect(() => {
-    if (profile.role === "Client" && homeData && !isWeekActuallyLogged(thisWeekLog)) {
+    if (effectiveRole === "Client" && homeData && !isWeekActuallyLogged(thisWeekLog)) {
       setShowReminder(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -159,7 +159,7 @@ export default function HomePage() {
     .filter(Boolean) as { brand: string; dailyVolume: number; readyBuffer: number }[];
 
   const needsItems: { icon: any; star?: boolean; title: string; sub: string; action: string; onClick: () => void }[] = [];
-  if (profile.role === "Client" && !isWeekActuallyLogged(thisWeekLog)) {
+  if (effectiveRole === "Client" && !isWeekActuallyLogged(thisWeekLog)) {
     needsItems.push({
       icon: Star,
       star: true,
@@ -202,7 +202,7 @@ export default function HomePage() {
       onClick: () => router.push("/calendar"),
     });
   }
-  if (profile.role === "Client") {
+  if (effectiveRole === "Client") {
     data.retainerCampaigns
       .filter((c) => !c.rate && !c.maxPosts)
       .forEach((c) => {
@@ -230,7 +230,7 @@ export default function HomePage() {
 
   return (
     <div>
-      {profile.role === "Admin" && community && <CommunityOverview community={community} />}
+      {effectiveRole === "Admin" && community && <CommunityOverview community={community} />}
 
       <div style={{ marginBottom: 24 }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
@@ -244,14 +244,14 @@ export default function HomePage() {
               </h1>
             </div>
           </div>
-          {profile.role === "Client" && (
+          {effectiveRole === "Client" && (
             <Button onClick={() => setShowCheckIn(true)} variant={isWeekActuallyLogged(thisWeekLog) ? "secondary" : "primary"} style={{ flexShrink: 0 }}>
               {isWeekActuallyLogged(thisWeekLog) ? <Check size={15} /> : <Star size={15} fill="#fff" />}
               Weekly Check-In {isWeekActuallyLogged(thisWeekLog) ? "· Done" : ""}
             </Button>
           )}
         </div>
-        {profile.role === "Client" && (
+        {effectiveRole === "Client" && (
           <>
             <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 10, flexWrap: "wrap" }}>
               <span className="cl-mono" style={{ fontSize: 26, fontWeight: 700, color: C.accentLight }}>
@@ -268,12 +268,12 @@ export default function HomePage() {
         <SlateDivider style={{ marginTop: 16, borderRadius: 2, overflow: "hidden", width: 140 }} />
       </div>
 
-      {(profile.role === "Client" || profile.role === "VA/Editor" || profile.role === "Creative Director") &&
+      {(effectiveRole === "Client" || profile.role === "VA/Editor" || profile.role === "Creative Director") &&
         (() => {
           const todayStr = todayPlus(0);
           const filmingToday = data.calendar.filter((c) => c.date === todayStr && (profile.role !== "VA/Editor" || c.editorProfileId === profile.id));
           const weekLogged = isWeekActuallyLogged(thisWeekLog);
-          const nothingDue = filmingToday.length === 0 && urgentUnscripted.length === 0 && (profile.role !== "Client" || weekLogged);
+          const nothingDue = filmingToday.length === 0 && urgentUnscripted.length === 0 && (effectiveRole !== "Client" || weekLogged);
 
           const filmingByBrand: Record<string, typeof filmingToday> = {};
           filmingToday.forEach((c) => {
@@ -320,7 +320,7 @@ export default function HomePage() {
                       </Button>
                     </div>
                   ))}
-                  {profile.role === "Client" && !weekLogged && (
+                  {effectiveRole === "Client" && !weekLogged && (
                     <div style={{ display: "flex", alignItems: "center", gap: 10, background: C.accentDim, border: `1px solid ${C.accent}`, borderRadius: 8, padding: "8px 12px" }}>
                       <Star size={14} color={C.accentLight} fill={C.accentLight} style={{ flexShrink: 0 }} />
                       <span style={{ fontSize: 13, flex: 1 }}>Weekly check-in — your main focus</span>
@@ -335,7 +335,7 @@ export default function HomePage() {
           );
         })()}
 
-      {profile.role === "Client" && (
+      {effectiveRole === "Client" && (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1.2fr", gap: 16, marginBottom: 16 }}>
           <Card>
             <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 10 }}>Videos filmed</div>
@@ -377,7 +377,7 @@ export default function HomePage() {
         </div>
       )}
 
-      {profile.role === "Client" && data.weeklyLogs.length > 1 && (
+      {effectiveRole === "Client" && data.weeklyLogs.length > 1 && (
         <Card style={{ marginBottom: 16 }}>
           <div className="cl-mono" style={{ fontSize: 11, letterSpacing: "0.1em", color: C.accentLight, textTransform: "uppercase", fontWeight: 700, marginBottom: 12 }}>
             Your income trend
@@ -386,7 +386,7 @@ export default function HomePage() {
         </Card>
       )}
 
-      {profile.role === "Client" &&
+      {effectiveRole === "Client" &&
         (() => {
           const monthLogsForBrands = data.weeklyLogs.filter((l) => isSameMonth(l.weekOf));
           const brandEarnings = data.brands.map((brand, i) => {
@@ -421,7 +421,7 @@ export default function HomePage() {
           );
         })()}
 
-      {profile.role === "Client" && (justHitGoal || filmingStreak >= 2) && (
+      {effectiveRole === "Client" && (justHitGoal || filmingStreak >= 2) && (
         <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
           {justHitGoal && (
             <div style={{ display: "flex", alignItems: "center", gap: 10, background: "rgba(61,220,132,0.12)", border: `1px solid ${C.success}`, borderRadius: 10, padding: "10px 14px", fontSize: 13, color: C.text }}>
