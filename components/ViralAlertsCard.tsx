@@ -62,13 +62,20 @@ export default function ViralAlertsCard({ clientId }: { clientId: string }) {
       <div style={{ display: "grid", gap: 8 }}>
         {alerts.map((a) => (
           <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, background: C.surface2, borderRadius: 8, padding: "9px 12px" }}>
+            {a.thumbnail && (
+              <img
+                src={a.thumbnail}
+                alt=""
+                style={{ width: 34, height: 45, borderRadius: 5, objectFit: "cover", flexShrink: 0, display: "block" }}
+              />
+            )}
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                 {a.description || "Untitled video"}
               </div>
               <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>
                 @{a.creatorHandle}
-                {a.brand ? ` · ${a.brand}` : ""}
+                {a.brand ? ` · ${a.brand}` : ""} · {formatVelocity(a.views)} views
               </div>
             </div>
             <Badge tone="warning">{formatVelocity(a.velocity)}/24h</Badge>

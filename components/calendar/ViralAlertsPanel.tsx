@@ -14,7 +14,7 @@
 // paid tier.
 
 import React, { useCallback, useEffect, useState } from "react";
-import { AlertCircle, ExternalLink, Flame, Loader2, Plus, RefreshCw, Trash2, TrendingUp } from "lucide-react";
+import { AlertCircle, Eye, FileText, Flame, Loader2, Play, Plus, RefreshCw, Trash2, TrendingUp } from "lucide-react";
 import { C } from "@/lib/theme";
 import { Card, Button, Badge, Field, EmptyState, inputStyle } from "@/components/ui";
 import { createClient } from "@/lib/supabase";
@@ -45,6 +45,8 @@ export default function ViralAlertsPanel({ clientId, activeBrand }: { clientId: 
   const [adding, setAdding] = useState(false);
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState("");
+  const [transcribingId, setTranscribingId] = useState<string | null>(null);
+  const [transcripts, setTranscripts] = useState<Record<string, string>>({});
 
   const reload = useCallback(async () => {
     const supabase = createClient();
@@ -124,6 +126,29 @@ export default function ViralAlertsPanel({ clientId, activeBrand }: { clientId: 
     }
   }
 
+  // Reuses the same route the script-level "Break down this reference" uses,
+  // minus an entryId — there's no calendar entry to cache onto here, so the
+  // transcript lives in component state until they turn it into a script.
+  async function transcribe(a: ViralAlertVideo) {
+    if (!a.url) return;
+    setError("");
+    setTranscribingId(a.id);
+    try {
+      const res = await fetch("/api/claude/analyze-reference", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId, referenceUrl: a.url }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Couldn't transcribe that video");
+      setTranscripts((prev) => ({ ...prev, [a.id]: json.transcript }));
+    } catch (err) {
+      setError(toastMessage(err, "Couldn't transcribe that video — try again."));
+    } finally {
+      setTranscribingId(null);
+    }
+  }
+
   async function dismiss(id: string) {
     setAlerts((prev) => prev.filter((a) => a.id !== id));
     try {
@@ -143,31 +168,82 @@ export default function ViralAlertsPanel({ clientId, activeBrand }: { clientId: 
           <div className="cl-mono" style={{ fontSize: 11, letterSpacing: "0.1em", color: C.warning, textTransform: "uppercase", fontWeight: 700, marginBottom: 10 }}>
             Going viral now
           </div>
-          <div style={{ display: "grid", gap: 8 }}>
+          <div style={{ display: "grid", gap: 10 }}>
             {alerts.map((a) => (
-              <Card key={a.id} style={{ padding: 12, display: "flex", alignItems: "center", gap: 12, border: `1px solid ${C.warning}` }}>
-                <div style={{ width: 34, height: 34, borderRadius: 8, background: "rgba(245,166,35,0.14)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <Flame size={16} color={C.warning} />
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {a.description || "Untitled video"}
+              <Card key={a.id} style={{ padding: 0, overflow: "hidden", border: `1px solid ${C.warning}` }}>
+                <div style={{ display: "flex", gap: 14, padding: 14 }}>
+                  {/* Poster frame doubles as the play affordance — clicking
+                      it opens the real post, same as the Watch button. */}
+                  {a.thumbnail ? (
+                    <a
+                      href={a.url || "#"}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ position: "relative", flexShrink: 0, width: 92, height: 122, borderRadius: 10, overflow: "hidden", display: "block", background: C.surface3 }}
+                      title="Watch this video"
+                    >
+                      <img src={a.thumbnail} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                      <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.28)" }}>
+                        <Play size={22} color="#fff" fill="#fff" />
+                      </span>
+                    </a>
+                  ) : (
+                    <div style={{ width: 92, height: 122, borderRadius: 10, background: C.surface3, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <Flame size={22} color={C.warning} />
+                    </div>
+                  )}
+
+                  <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+                      <Badge tone="warning">{formatVelocity(a.velocity)}/24h</Badge>
+                      {a.brand && <Badge tone="accent">{a.brand}</Badge>}
+                      <span style={{ fontSize: 11, color: C.textFaint }}>{relativeTime(a.alertedAt)}</span>
+                    </div>
+
+                    <div style={{ fontSize: 13.5, fontWeight: 600, lineHeight: 1.45, marginBottom: 4 }}>
+                      {a.description || "Untitled video"}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: C.textMuted, marginBottom: 10 }}>
+                      @{a.creatorHandle} · {a.platform === "tiktok" ? "TikTok" : "Instagram"}
+                    </div>
+
+                    <div className="cl-mono" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 12 }}>
+                      <Eye size={14} color={C.textMuted} />
+                      {formatVelocity(a.views)}
+                      <span style={{ fontSize: 11, fontWeight: 400, color: C.textFaint }}>views</span>
+                    </div>
+
+                    <div style={{ display: "flex", gap: 8, marginTop: "auto", flexWrap: "wrap" }}>
+                      {a.url && (
+                        <a href={a.url} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>
+                          <Button size="sm">
+                            <Play size={12} /> Watch
+                          </Button>
+                        </a>
+                      )}
+                      {a.url && (
+                        <Button size="sm" variant="secondary" onClick={() => transcribe(a)} disabled={transcribingId === a.id}>
+                          {transcribingId === a.id ? <Loader2 size={12} className="cl-spin" /> : <FileText size={12} />}
+                          {transcribingId === a.id ? "Transcribing..." : "Transcribe"}
+                        </Button>
+                      )}
+                      <Button size="sm" variant="secondary" onClick={() => dismiss(a.id)}>
+                        Dismiss
+                      </Button>
+                    </div>
                   </div>
-                  <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>
-                    @{a.creatorHandle}
-                    {a.brand ? ` · ${a.brand}` : ""} · {relativeTime(a.alertedAt)}
-                  </div>
                 </div>
-                <Badge tone="warning">{formatVelocity(a.velocity)}/24h</Badge>
-                <span className="cl-mono" style={{ fontSize: 11, color: C.textFaint }}>{formatVelocity(a.views)} views</span>
-                {a.url && (
-                  <a href={a.url} target="_blank" rel="noopener noreferrer" style={{ color: C.accentLight, display: "flex" }} title="Open video">
-                    <ExternalLink size={14} />
-                  </a>
+
+                {transcripts[a.id] && (
+                  <div style={{ borderTop: `1px solid ${C.border}`, padding: 14, background: C.surface2 }}>
+                    <div className="cl-mono" style={{ fontSize: 10.5, color: C.accentLight, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 8 }}>
+                      Transcript
+                    </div>
+                    <div style={{ fontSize: 12.5, color: C.textMuted, lineHeight: 1.65, whiteSpace: "pre-wrap", maxHeight: 220, overflowY: "auto" }} className="cl-scroll">
+                      {transcripts[a.id]}
+                    </div>
+                  </div>
                 )}
-                <button onClick={() => dismiss(a.id)} title="Dismiss" style={{ background: "none", border: "none", color: C.textFaint, cursor: "pointer" }}>
-                  <Trash2 size={13} />
-                </button>
               </Card>
             ))}
           </div>

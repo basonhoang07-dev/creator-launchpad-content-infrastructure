@@ -185,24 +185,35 @@ export interface ViralAlertEmbedInput {
   velocity: number;
 }
 
-const EMBED_COLOR_VIRAL = 0xf5a623;
+const EMBED_COLOR_VIRAL = 0xe5484d;
 
 export function buildViralAlertEmbed(input: ViralAlertEmbedInput) {
-  const fields: { name: string; value: string; inline?: boolean }[] = [
-    { name: "Pace", value: `${formatCount(input.velocity)} views / 24h`, inline: true },
-    { name: "Total views", value: formatCount(input.views), inline: true },
-    { name: "Creator", value: `@${input.creatorHandle}`, inline: true },
-  ];
-  if (input.brand) fields.push({ name: "Board", value: input.brand, inline: true });
+  const platformName = input.platform === "tiktok" ? "TikTok" : "Instagram";
+
+  // Body reads as a sentence rather than a stat block — the caption is what
+  // tells you at a glance whether the video is worth opening, so it leads.
+  const lines = [
+    `✨ **@${input.creatorHandle}** is taking off on **${platformName}** 🔥`,
+    "",
+    input.description ? `📄 *${input.description.replace(/\s+/g, " ").trim().slice(0, 300)}*` : null,
+    "",
+    `Now at **${formatCount(input.views)}** views · climbing **${formatCount(input.velocity)}/24h**`,
+    input.url ? `\n▶️ **[Watch it](${input.url})**` : null,
+  ].filter((l) => l !== null);
 
   return {
-    title: `🚀 Going viral — @${input.creatorHandle}`.slice(0, 256),
-    description: (input.description || "").slice(0, 4096) || undefined,
+    // The board is the whole point of the alert — it's what tells them which
+    // campaign this reference is for, so it goes in the title, not a field
+    // that collapses on mobile.
+    title: `🚨 VIRAL ALERT${input.brand ? ` · ${input.brand}` : ""}`.slice(0, 256),
+    description: lines.join("\n").slice(0, 4096),
     color: EMBED_COLOR_VIRAL,
     url: input.url || undefined,
-    fields,
-    ...(input.thumbnail ? { thumbnail: { url: input.thumbnail } } : {}),
+    // `image` (not `thumbnail`) renders it full-width under the text, which
+    // is what makes it read like a video card instead of a link preview.
+    ...(input.thumbnail ? { image: { url: input.thumbnail } } : {}),
     footer: { text: `Creator Launchpad · Viral Alert · ${input.clientName}` },
+    timestamp: new Date().toISOString(),
   };
 }
 
