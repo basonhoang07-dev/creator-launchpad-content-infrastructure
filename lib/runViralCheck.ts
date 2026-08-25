@@ -11,7 +11,8 @@
 // page.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { fetchCreatorVideos, reconcileCreatorVideos, type ViralHit } from "@/lib/viralAlerts";
+import { fetchCreatorVideos, reconcileCreatorVideos, MAX_VIDEO_AGE_DAYS, type ViralHit, type SocialkitVideo } from "@/lib/viralAlerts";
+import { fetchCreatorVideosBatch, isApifyConfigured } from "@/lib/apifyCreators";
 import { findChannelIdByClientName, buildViralAlertEmbed } from "@/lib/discord";
 
 export interface TrackedCreatorRow {
@@ -45,9 +46,33 @@ export async function runViralCheckForClient(
 ): Promise<ViralCheckResult> {
   const result: ViralCheckResult = { checked: 0, hits: [], errors: [] };
 
+  // Apify fetches every Instagram creator in ONE call and bills per result,
+  // which is roughly 10x cheaper than SocialKit's per-creator-per-check
+  // billing on the free tier. Pre-fetched here so the loop below can reuse
+  // it; anything not covered (TikTok, or Apify not configured) still falls
+  // through to the original per-creator path untouched.
+  let apifyBatch: Map<string, SocialkitVideo[]> | null = null;
+  const igCreators = creators.filter((c) => c.platform === "instagram" && c.handle);
+  if (isApifyConfigured() && igCreators.length > 0) {
+    try {
+      apifyBatch = await fetchCreatorVideosBatch(
+        igCreators.map((c) => ({ handle: c.handle!, profileUrl: c.profile_url })),
+        process.env.APIFY_API_TOKEN!,
+        MAX_VIDEO_AGE_DAYS
+      );
+    } catch (err: any) {
+      // A failed batch must not take the whole run down — record it once and
+      // let each creator fall back to the per-creator source below.
+      result.errors.push(`Apify batch: ${err.message || "failed"}`);
+    }
+  }
+
   for (const creator of creators) {
     try {
-      const videos = await fetchCreatorVideos(creator.platform, creator.profile_url, accessKey);
+      const batched = apifyBatch?.get((creator.handle || "").toLowerCase().replace(/^@/, ""));
+      const videos = batched && batched.length > 0
+        ? batched
+        : await fetchCreatorVideos(creator.platform, creator.profile_url, accessKey);
       const hits = await reconcileCreatorVideos(supabase, creator.id, creator.viral_threshold, videos);
       result.checked++;
       hits.forEach((h) =>

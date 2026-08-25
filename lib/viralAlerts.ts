@@ -36,7 +36,7 @@ const MS_PER_HOUR = 3_600_000;
 // Only ever consider recent videos — an old video with a huge total view
 // count isn't "going viral now", and including them would fire an alert for
 // back catalogue the first time a creator is ever checked.
-const MAX_VIDEO_AGE_DAYS = 14;
+export const MAX_VIDEO_AGE_DAYS = 14;
 
 // Below this, a velocity number is too noisy to trust: two readings a few
 // minutes apart can extrapolate a tiny bump into a huge fake 24h rate.
