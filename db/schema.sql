@@ -28,6 +28,10 @@ create table clients (
   google_meet_email text,
   discord_webhook_url text,
   discord_channel_id text,
+  -- Optional separate destination for Viral Alerts (see
+  -- db/migration_013_viral_alert_channel.sql). Null = use
+  -- discord_channel_id, same as recaps.
+  viral_alert_channel_id text,
   ugc_kpi_goal numeric default 0,
   ugc_kpi_rate_per_deal numeric default 0,
   ugc_kpi_closing_rate numeric default 0,

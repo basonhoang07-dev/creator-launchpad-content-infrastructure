@@ -57,7 +57,7 @@ export async function GET(req: NextRequest) {
 
     const { data: client } = await admin
       .from("clients")
-      .select("id, name, discord_channel_id, discord_webhook_url")
+      .select("id, name, discord_channel_id, discord_webhook_url, viral_alert_channel_id")
       .eq("id", clientId)
       .single();
     if (!client) continue;

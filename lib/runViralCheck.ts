@@ -31,7 +31,15 @@ export interface ViralCheckResult {
 
 export async function runViralCheckForClient(
   supabase: SupabaseClient,
-  client: { id: string; name: string; discord_channel_id?: string | null; discord_webhook_url?: string | null },
+  client: {
+    id: string;
+    name: string;
+    discord_channel_id?: string | null;
+    discord_webhook_url?: string | null;
+    // Optional dedicated destination (e.g. a "🚨⎜viral-alerts" channel,
+    // possibly in a different server). Falls back to the 1-on-1 channel.
+    viral_alert_channel_id?: string | null;
+  },
   creators: TrackedCreatorRow[],
   accessKey: string
 ): Promise<ViralCheckResult> {
@@ -65,11 +73,22 @@ export async function runViralCheckForClient(
 // the DB (and shows on Home) by the time this runs, so a Discord hiccup must
 // never fail the check itself.
 async function postViralAlert(
-  client: { name: string; discord_channel_id?: string | null; discord_webhook_url?: string | null },
+  client: {
+    name: string;
+    discord_channel_id?: string | null;
+    discord_webhook_url?: string | null;
+    viral_alert_channel_id?: string | null;
+  },
   hit: ViralHit & { creatorHandle: string; brand: string | null; platform: "tiktok" | "instagram" }
 ) {
   const botToken = process.env.DISCORD_BOT_TOKEN;
-  const channelId = client.discord_channel_id || (botToken ? await findChannelIdByClientName(client.name) : null);
+  // A dedicated viral-alerts channel wins outright when set — it's an
+  // explicit choice, and unlike the 1-on-1 channel it may live in a
+  // different server, so name-matching must not override it.
+  const channelId =
+    client.viral_alert_channel_id ||
+    client.discord_channel_id ||
+    (botToken ? await findChannelIdByClientName(client.name) : null);
 
   const embed = buildViralAlertEmbed({
     clientName: client.name,

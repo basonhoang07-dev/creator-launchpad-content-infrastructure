@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
 
   const { data: client } = await supabase
     .from("clients")
-    .select("id, name, discord_channel_id, discord_webhook_url")
+    .select("id, name, discord_channel_id, discord_webhook_url, viral_alert_channel_id")
     .eq("id", clientId)
     .single();
   if (!client) return NextResponse.json({ error: "Client not found" }, { status: 404 });
