@@ -82,6 +82,9 @@ export default function ReferenceBreakdownPanel({
       if (!res.ok) throw new Error(json.error || "Couldn't break down that reference");
       onUpdated({ referenceTranscript: json.transcript, referenceFramework: json.framework });
     } catch (err) {
+      // The route's own messages already name the real cause (key rejected,
+      // monthly quota used up, not connected yet) — only fall back to a
+      // generic hint when there's genuinely nothing more specific.
       setError(toastMessage(err, "Couldn't break down that reference — check the link is a public Instagram Reel or TikTok."));
     } finally {
       setAnalyzing(false);

@@ -10,12 +10,17 @@
 // Two external calls: SocialKit's per-platform Transcript API resolves the
 // URL straight to spoken text (no separate video download/ffmpeg step —
 // SocialKit handles that itself), then Claude turns that transcript into
-// the structured framework. Needs SOCIALKIT_API_KEY set — same
-// not-configured-yet pattern as ANTHROPIC_API_KEY elsewhere in this app.
+// the structured framework.
+//
+// The SocialKit key is per-client (Integrations → SocialKit), so each
+// client's breakdowns come out of their own free-tier quota rather than one
+// org-wide paid subscription. SOCIALKIT_API_KEY is an optional org-wide
+// fallback for clients who haven't connected their own.
 
 import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
 import { requireClientAccess, checkAiUsageCap, logAiUsage } from "@/lib/auth";
+import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { isAnthropicConfigured, ANTHROPIC_NOT_CONFIGURED_MESSAGE } from "@/lib/anthropicStatus";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -27,11 +32,27 @@ function detectPlatform(url: string): "tiktok" | "instagram" | null {
   return null;
 }
 
-async function fetchTranscript(platform: "tiktok" | "instagram", url: string): Promise<string> {
-  const accessKey = process.env.SOCIALKIT_API_KEY!;
+// Read via the service-role client — socialkit_connections is RLS-locked
+// with no policies, same as the Google token tables.
+async function getSocialkitKey(clientId: string): Promise<string | null> {
+  const admin = createAdminSupabaseClient();
+  const { data } = await admin.from("socialkit_connections").select("api_key").eq("client_id", clientId).maybeSingle();
+  return data?.api_key || process.env.SOCIALKIT_API_KEY || null;
+}
+
+async function fetchTranscript(platform: "tiktok" | "instagram", url: string, accessKey: string): Promise<string> {
   const endpoint = `https://api.socialkit.dev/${platform}/transcript?access_key=${encodeURIComponent(accessKey)}&url=${encodeURIComponent(url)}`;
   const res = await fetch(endpoint);
-  const json = await res.json();
+  const json = await res.json().catch(() => ({}));
+
+  // A rejected key looks nothing like a bad video link to the user — call it
+  // out explicitly instead of letting it read as "this video won't work."
+  if (res.status === 401 || res.status === 403) {
+    throw new Error("SocialKit rejected that API key — reconnect it under Integrations.");
+  }
+  if (res.status === 429) {
+    throw new Error("You've used up this month's SocialKit breakdowns (free tier is 20/month) — it resets next month.");
+  }
   if (!res.ok || !json.success) {
     throw new Error(json?.error || `Couldn't fetch that ${platform === "tiktok" ? "TikTok" : "Instagram"} video's transcript — check the link is public`);
   }
@@ -41,9 +62,6 @@ async function fetchTranscript(platform: "tiktok" | "instagram", url: string): P
 export async function POST(req: NextRequest) {
   if (!isAnthropicConfigured()) {
     return NextResponse.json({ error: ANTHROPIC_NOT_CONFIGURED_MESSAGE }, { status: 503 });
-  }
-  if (!process.env.SOCIALKIT_API_KEY) {
-    return NextResponse.json({ error: "Reference video breakdown isn't set up yet — an Admin needs to add SOCIALKIT_API_KEY." }, { status: 503 });
   }
 
   const { clientId, entryId, referenceUrl } = await req.json();
@@ -62,9 +80,17 @@ export async function POST(req: NextRequest) {
   const usage = await checkAiUsageCap(supabase, clientId);
   if (!usage.ok) return NextResponse.json({ error: usage.error }, { status: usage.status });
 
+  const accessKey = await getSocialkitKey(clientId);
+  if (!accessKey) {
+    return NextResponse.json(
+      { error: "Connect SocialKit under Integrations first — it's free for 20 breakdowns a month." },
+      { status: 503 }
+    );
+  }
+
   let transcript: string;
   try {
-    transcript = await fetchTranscript(platform, referenceUrl);
+    transcript = await fetchTranscript(platform, referenceUrl, accessKey);
   } catch (err: any) {
     return NextResponse.json({ error: err.message || "Couldn't fetch that video's transcript" }, { status: 502 });
   }

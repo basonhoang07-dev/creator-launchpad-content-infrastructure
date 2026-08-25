@@ -17,6 +17,7 @@ export interface IntegrationMeta {
 const INTEGRATION_DEFS: Omit<IntegrationMeta, "connected" | "connectedEmail">[] = [
   { id: "drive", name: "Google Drive", desc: "Auto-creates folders for scripted content" },
   { id: "gcal", name: "Google Calendar", desc: "Pushes your availability blocks as real events, and shows your meetings here" },
+  { id: "socialkit", name: "SocialKit", desc: "Breaks down a reference Reel/TikTok into its transcript + framework" },
   { id: "bento", name: "Bento", desc: "Brand outreach — external tool" },
   { id: "sandcastles", name: "Sandcastles", desc: "Competitor / outlier research — external tool" },
   { id: "warmr", name: "Warmr", desc: "Auto warm-up for social accounts — external tool" },

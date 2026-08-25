@@ -292,6 +292,17 @@ create table google_drive_connections (
 );
 alter table google_drive_connections enable row level security;
 
+-- Per-client SocialKit API key for "Break down this reference" on a script.
+-- Same deliberate no-policy lockdown as the two Google connection tables
+-- above — an API key is a credential, so it's only ever read server-side via
+-- the service-role client. See db/migration_011_socialkit_connections.sql.
+create table socialkit_connections (
+  client_id uuid primary key references clients(id) on delete cascade,
+  api_key text not null,
+  created_at timestamptz default now()
+);
+alter table socialkit_connections enable row level security;
+
 -- ---------- AI usage tracking ----------
 -- One row per successful Claude API call. lib/auth.ts sums rows for the
 -- current calendar month per client_id before letting a claude/* route run,
