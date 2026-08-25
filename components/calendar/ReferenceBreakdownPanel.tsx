@@ -13,47 +13,12 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, ChevronDown, ChevronUp, Loader2, Plug, Sparkles } from "lucide-react";
 import { C } from "@/lib/theme";
-import { Card, Button, Badge } from "@/components/ui";
+import { Button } from "@/components/ui";
 import { createClient } from "@/lib/supabase";
-import type { CalendarEntry, ReferenceFrameworkPart } from "@/lib/queries/calendar";
-import { useToast, toastMessage } from "@/components/Toast";
+import type { CalendarEntry } from "@/lib/queries/calendar";
+import FrameworkTable, { normalizeBreakdown } from "@/components/calendar/FrameworkTable";
+import { toastMessage } from "@/components/Toast";
 
-function FrameworkPartCard({ part }: { part: ReferenceFrameworkPart }) {
-  return (
-    <Card style={{ padding: 14 }}>
-      <Badge tone="accent">{part.part}</Badge>
-      <div style={{ fontSize: 13, color: C.text, lineHeight: 1.6, fontStyle: "italic", margin: "10px 0 12px", borderLeft: `2px solid ${C.accent}`, paddingLeft: 12 }}>
-        "{part.content}"
-      </div>
-      <div style={{ display: "grid", gap: 8, fontSize: 12, lineHeight: 1.55 }}>
-        <div>
-          <span style={{ color: C.accentLight, fontWeight: 700 }}>Why it hooks: </span>
-          <span style={{ color: C.textMuted }}>{part.curiosityLoop}</span>
-        </div>
-        {part.immutable && (
-          <div>
-            <span style={{ color: C.warning, fontWeight: 700 }}>Keep as theirs, not yours: </span>
-            <span style={{ color: C.textMuted }}>{part.immutable}</span>
-          </div>
-        )}
-        <div>
-          <span style={{ color: C.success, fontWeight: 700 }}>Make it yours: </span>
-          <span style={{ color: C.textMuted }}>{part.yourVersion}</span>
-        </div>
-        <div>
-          <span style={{ color: C.accentLight, fontWeight: 700 }}>Tonality: </span>
-          <span style={{ color: C.textMuted }}>{part.tonality}</span>
-        </div>
-        {part.visual && (
-          <div>
-            <span style={{ color: C.accentLight, fontWeight: 700 }}>Dressing & background: </span>
-            <span style={{ color: C.textMuted }}>{part.visual}</span>
-          </div>
-        )}
-      </div>
-    </Card>
-  );
-}
 
 export default function ReferenceBreakdownPanel({
   entry,
@@ -64,7 +29,6 @@ export default function ReferenceBreakdownPanel({
   clientId: string;
   onUpdated: (patch: Partial<CalendarEntry>) => void;
 }) {
-  const { showToast } = useToast();
   const router = useRouter();
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState("");
@@ -114,7 +78,8 @@ export default function ReferenceBreakdownPanel({
     }
   }
 
-  const hasBreakdown = !!entry.referenceFramework?.length;
+  const breakdown = normalizeBreakdown(entry.referenceFramework);
+  const hasBreakdown = !!breakdown?.parts.length;
   // Don't dead-end them on an error after the click — if SocialKit isn't
   // connected yet, hand them the setup path up front instead. Deep-links
   // straight into the connect flow on Integrations rather than dropping
@@ -175,13 +140,7 @@ export default function ReferenceBreakdownPanel({
         </div>
       )}
 
-      {hasBreakdown && (
-        <div style={{ display: "grid", gap: 10 }}>
-          {entry.referenceFramework!.map((part, i) => (
-            <FrameworkPartCard key={i} part={part} />
-          ))}
-        </div>
-      )}
+      {hasBreakdown && <FrameworkTable breakdown={breakdown!} />}
     </div>
   );
 }

@@ -39,17 +39,34 @@ export interface CalendarEntry {
   comments: Comment[];
   sortOrder: number;
   referenceTranscript: string | null;
-  referenceFramework: ReferenceFrameworkPart[] | null;
+  referenceFramework: ReferenceBreakdown | null;
 }
 
+// Two columns, deliberately: `framework` is the plug-and-play template —
+// the reusable skeleton with the original creator's specifics stripped out
+// — and `explanation` is why that beat works. Everything about delivery
+// (what to swap, wardrobe, tonality) is collected once at the end in
+// ReferenceBreakdown rather than repeated per part, so the table stays
+// scannable while writing.
 export interface ReferenceFrameworkPart {
   part: string;
-  content: string;
-  curiosityLoop: string;
-  immutable: string | null;
-  yourVersion: string;
-  tonality: string;
-  visual: string | null;
+  framework: string;
+  explanation: string;
+}
+
+export interface TonalityNote {
+  section: string;
+  direction: string;
+}
+
+export interface ReferenceBreakdown {
+  parts: ReferenceFrameworkPart[];
+  whatToChange: string[];
+  delivery: {
+    wardrobe: string | null;
+    setting: string | null;
+    tonality: TonalityNote[];
+  };
 }
 
 export interface TrashedEntry {

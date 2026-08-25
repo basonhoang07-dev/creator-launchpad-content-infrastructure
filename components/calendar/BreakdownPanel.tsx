@@ -14,46 +14,11 @@
 import React, { useState } from "react";
 import { AlertCircle, ArrowRight, ChevronDown, ChevronUp, Layers, Loader2, Sparkles, Wand2 } from "lucide-react";
 import { C } from "@/lib/theme";
-import { Card, Button, Badge, Field, inputStyle } from "@/components/ui";
-import type { ReferenceFrameworkPart } from "@/lib/queries/calendar";
+import { Card, Button, Field, inputStyle } from "@/components/ui";
+import type { ReferenceBreakdown } from "@/lib/queries/calendar";
+import FrameworkTable, { normalizeBreakdown } from "@/components/calendar/FrameworkTable";
 import { toastMessage } from "@/components/Toast";
 
-function FrameworkPartCard({ part }: { part: ReferenceFrameworkPart }) {
-  return (
-    <Card style={{ padding: 14 }}>
-      <Badge tone="accent">{part.part}</Badge>
-      <div style={{ fontSize: 13, color: C.text, lineHeight: 1.6, fontStyle: "italic", margin: "10px 0 12px", borderLeft: `2px solid ${C.accent}`, paddingLeft: 12 }}>
-        "{part.content}"
-      </div>
-      <div style={{ display: "grid", gap: 8, fontSize: 12, lineHeight: 1.55 }}>
-        <div>
-          <span style={{ color: C.accentLight, fontWeight: 700 }}>Why it hooks: </span>
-          <span style={{ color: C.textMuted }}>{part.curiosityLoop}</span>
-        </div>
-        {part.immutable && (
-          <div>
-            <span style={{ color: C.warning, fontWeight: 700 }}>Keep as theirs, not yours: </span>
-            <span style={{ color: C.textMuted }}>{part.immutable}</span>
-          </div>
-        )}
-        <div>
-          <span style={{ color: C.success, fontWeight: 700 }}>Make it yours: </span>
-          <span style={{ color: C.textMuted }}>{part.yourVersion}</span>
-        </div>
-        <div>
-          <span style={{ color: C.accentLight, fontWeight: 700 }}>Tonality: </span>
-          <span style={{ color: C.textMuted }}>{part.tonality}</span>
-        </div>
-        {part.visual && (
-          <div>
-            <span style={{ color: C.accentLight, fontWeight: 700 }}>Dressing & background: </span>
-            <span style={{ color: C.textMuted }}>{part.visual}</span>
-          </div>
-        )}
-      </div>
-    </Card>
-  );
-}
 
 export default function BreakdownPanel({
   clientId,
@@ -70,7 +35,7 @@ export default function BreakdownPanel({
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
   const [transcriptOpen, setTranscriptOpen] = useState(false);
-  const [result, setResult] = useState<{ transcript: string; framework: ReferenceFrameworkPart[]; entry: { id: string; title: string } } | null>(null);
+  const [result, setResult] = useState<{ transcript: string; framework: ReferenceBreakdown | null; entry: { id: string; title: string } } | null>(null);
 
   // It files the result onto a specific board, so it needs to know which one.
   const needsBoard = activeBrand === "All";
@@ -88,7 +53,7 @@ export default function BreakdownPanel({
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Couldn't break that down");
-      setResult({ transcript: json.transcript, framework: json.framework, entry: json.entry });
+      setResult({ transcript: json.transcript, framework: normalizeBreakdown(json.framework), entry: json.entry });
       setUrl("");
     } catch (err) {
       setError(toastMessage(err, "Couldn't break that down — check the link is a public Instagram Reel or TikTok."));
@@ -105,9 +70,9 @@ export default function BreakdownPanel({
           <div style={{ fontSize: 13, fontWeight: 600 }}>Break down a reference video</div>
         </div>
         <div style={{ fontSize: 11.5, color: C.textFaint, marginBottom: 14, lineHeight: 1.6 }}>
-          Paste any Instagram Reel or TikTok you want to model after. You'll get the full transcript plus a framework
-          breakdown — hooks, intention, body, lesson — with what's locked to that creator's story, what to swap for your
-          own, how to deliver it, and what to wear. It lands as a new concept
+          Paste any Instagram Reel or TikTok you want to model after. You'll get the full transcript, a plug-and-play
+          framework you can fill in — hooks, intention, body, lesson — plus exactly what to swap so it's yours, what to
+          wear, and how to say each part. It lands as a new concept
           {activeBrand !== "All" ? <> on <b style={{ color: C.accentLight }}>{activeBrand}</b></> : " on the board you pick"}, ready to write.
         </div>
 
@@ -176,11 +141,7 @@ export default function BreakdownPanel({
             )}
           </div>
 
-          <div style={{ display: "grid", gap: 10 }}>
-            {result.framework.map((part, i) => (
-              <FrameworkPartCard key={i} part={part} />
-            ))}
-          </div>
+          {result.framework && <FrameworkTable breakdown={result.framework} />}
         </>
       )}
     </div>

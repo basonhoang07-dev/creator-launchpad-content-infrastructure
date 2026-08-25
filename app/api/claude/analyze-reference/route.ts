@@ -1,11 +1,14 @@
 // app/api/claude/analyze-reference/route.ts
 //
 // Turns a reference Instagram Reel/TikTok URL into a full transcript plus a
-// reusable framework breakdown: Variation of Hooks, Intention, Body &
-// Context, and Lesson — each with why it creates a curiosity loop into the
-// next line, what's locked to the original creator's real story vs what the
-// client should swap in as their own, tonality guidance, and wardrobe/
-// background guidance.
+// reusable framework breakdown across four beats (Variation of Hooks,
+// Intention, Body & Context, Lesson), each as two columns: a plug-and-play
+// fill-in-the-blank skeleton, and why that beat works.
+//
+// What to swap, what to wear, and how to say each part are collected ONCE at
+// the end (whatToChange + delivery) rather than repeated per beat — the
+// per-beat table stays scannable while writing, and the delivery notes are
+// what you read right before filming.
 //
 // Two external calls: SocialKit's per-platform Transcript API resolves the
 // URL straight to spoken text (no separate video download/ffmpeg step —
@@ -120,16 +123,18 @@ Also give the video a short concept title (under 60 characters) — specific to 
 
 Break it into exactly these four parts, in this order: "Variation of Hooks", "Intention", "Body & Context", "Lesson".
 
-For each part, give:
-- content: the actual line(s) from the transcript covering this part. For "Variation of Hooks" specifically, also identify 2-3 alternate ways to open with the same core angle — different phrasings that would hit the same way.
-- curiosityLoop: specifically why this part pulls the viewer into the next line — name the actual retention mechanic at play (open loop, pattern interrupt, specificity, stakes, contrast, etc.), not just "it's interesting"
-- immutable: any specific fact, number, or claim in this part that belongs to the ORIGINAL creator's real story and must never be copied as someone else's own claim — e.g. "I made $100k/mo at 17" is immutable because it's a specific personal achievement not everyone has done. null if nothing in this part is creator-specific.
-- yourVersion: concrete guidance for what the viewer should swap in with their own real specifics instead, so the structure survives but the content is theirs
-- tonality: how to deliver this part vocally to actually land it — pace, emphasis, energy, where to slow down or punch a word
-- visual: wardrobe, background, framing, or setting guidance relevant to this specific part, if there's anything distinct to call out — null if it's the same as the rest of the video
+For each part give exactly two things:
+- framework: the PLUG-AND-PLAY template for this beat. Write it as a fill-in-the-blank skeleton the creator can drop their own specifics into, with placeholders in [square brackets] — e.g. "You're going to be the [aspirational identity] that [specific outcome] every [timeframe]". Strip out the original creator's personal numbers and claims; the skeleton is what transfers, not their story. For "Variation of Hooks", give 2-3 alternate openings built on the same skeleton, one per line.
+- explanation: why this beat works — name the actual retention mechanic (open loop, pattern interrupt, specificity, stakes, contrast, identity projection, etc.) and what it does to the viewer. Plain language, 1-3 sentences.
+
+Then, separately and only ONCE for the whole video:
+- whatToChange: a short list (3-6 items) of exactly what this creator must swap to make it their own. Call out any number, claim, or credential that belongs to the original creator and can't be borrowed — e.g. "I made $100k/mo at 17" can't be reused by someone who hasn't — and say what to put there instead.
+- delivery.wardrobe: what to wear for THIS specific video and why it fits the message. null if genuinely nothing matters here.
+- delivery.setting: background, framing, and lighting for this video. null if nothing specific matters.
+- delivery.tonality: an array of per-section delivery directions. For each, "section" is which beat it applies to (use the part names above, or a short phrase quoting the line) and "direction" is how to actually say it — name the emotional register plainly (sad, excited, deadpan, urgent, calm, conspiratorial) plus pace (slow, fast, normal) and where to pause or punch a word.
 
 Respond with ONLY valid JSON, no markdown fences, no preamble. Exact shape:
-{"title":"...","parts":[{"part":"Variation of Hooks","content":"...","curiosityLoop":"...","immutable":"..." | null,"yourVersion":"...","tonality":"...","visual":"..." | null},{"part":"Intention","content":"...","curiosityLoop":"...","immutable":"..." | null,"yourVersion":"...","tonality":"...","visual":"..." | null},{"part":"Body & Context","content":"...","curiosityLoop":"...","immutable":"..." | null,"yourVersion":"...","tonality":"...","visual":"..." | null},{"part":"Lesson","content":"...","curiosityLoop":"...","immutable":"..." | null,"yourVersion":"...","tonality":"...","visual":"..." | null}]}`;
+{"title":"...","parts":[{"part":"Variation of Hooks","framework":"...","explanation":"..."},{"part":"Intention","framework":"...","explanation":"..."},{"part":"Body & Context","framework":"...","explanation":"..."},{"part":"Lesson","framework":"...","explanation":"..."}],"whatToChange":["...","..."],"delivery":{"wardrobe":"..." | null,"setting":"..." | null,"tonality":[{"section":"...","direction":"..."}]}}`;
 
   const message = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
@@ -138,22 +143,30 @@ Respond with ONLY valid JSON, no markdown fences, no preamble. Exact shape:
   });
   const raw = message.content.filter((b) => b.type === "text").map((b) => (b as any).text).join("\n").trim();
 
-  let parsed: { title?: string; parts: unknown };
+  let parsed: { title?: string; parts: unknown; whatToChange?: unknown; delivery?: unknown };
   try {
     parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
   } catch {
     return NextResponse.json({ error: "Claude returned malformed JSON — try again" }, { status: 502 });
   }
 
+  // Stored as one object rather than a bare parts array: the delivery notes
+  // and what-to-change list apply to the video as a whole, not per beat.
+  const breakdown = {
+    parts: Array.isArray(parsed.parts) ? parsed.parts : [],
+    whatToChange: Array.isArray(parsed.whatToChange) ? parsed.whatToChange : [],
+    delivery: (parsed.delivery as any) || { wardrobe: null, setting: null, tonality: [] },
+  };
+
   await logAiUsage(supabase, clientId, "analyze-reference");
 
   if (entryId) {
     const { error } = await supabase
       .from("calendar_entries")
-      .update({ reference_transcript: transcript, reference_framework: parsed.parts })
+      .update({ reference_transcript: transcript, reference_framework: breakdown })
       .eq("id", entryId);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ transcript, framework: parsed.parts });
+    return NextResponse.json({ transcript, framework: breakdown });
   }
 
   if (createInBrand) {
@@ -178,7 +191,7 @@ Respond with ONLY valid JSON, no markdown fences, no preamble. Exact shape:
         entry_date: null,
         reference_link: referenceUrl,
         reference_transcript: transcript,
-        reference_framework: parsed.parts,
+        reference_framework: breakdown,
         notes: "Created from a reference breakdown — the framework below is the structure to rebuild with your own story.",
         posted: false,
         view_count: 0,
@@ -189,8 +202,8 @@ Respond with ONLY valid JSON, no markdown fences, no preamble. Exact shape:
       .single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    return NextResponse.json({ transcript, framework: parsed.parts, entry: created });
+    return NextResponse.json({ transcript, framework: breakdown, entry: created });
   }
 
-  return NextResponse.json({ transcript, framework: parsed.parts, title: parsed.title });
+  return NextResponse.json({ transcript, framework: breakdown, title: parsed.title });
 }
