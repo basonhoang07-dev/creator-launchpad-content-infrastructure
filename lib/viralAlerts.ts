@@ -42,18 +42,42 @@ const MAX_VIDEO_AGE_DAYS = 14;
 // minutes apart can extrapolate a tiny bump into a huge fake 24h rate.
 const MIN_HOURS_BETWEEN_READINGS = 1;
 
+// TikTok's channel-videos and Instagram's channel-reels return the same
+// information under different names — TikTok gives videoId/description/
+// thumbnail/createTime (ISO), Instagram gives no id at all plus caption/
+// thumbnailUrl/timestamp (Unix seconds) and views-or-plays. Normalizing both
+// here means the velocity math never has to know which platform it came
+// from. Instagram's lack of an id is why url is the last-resort key: it's
+// stable per reel, which is all the unique(tracked_creator_id, video_id)
+// constraint needs.
 export function normalizeSocialkitVideos(raw: any[]): SocialkitVideo[] {
   return (raw || [])
-    .filter((v) => v && v.videoId)
-    .map((v) => ({
-      videoId: String(v.videoId),
-      url: v.url || null,
-      description: v.description || null,
-      thumbnail: v.thumbnail || null,
-      createTime: v.createTime || null,
-      views: Number(v.views) || 0,
-      likes: Number(v.likes) || 0,
-    }));
+    .map((v) => {
+      if (!v) return null;
+      const id = v.videoId ?? v.id ?? v.pk ?? v.code ?? v.shortcode ?? v.url;
+      if (!id) return null;
+
+      let createTime: string | null = v.createTime || null;
+      if (!createTime && v.timestamp) {
+        // Unix seconds (Instagram) vs already-milliseconds — anything below
+        // ~1e11 is seconds, since ms timestamps for real dates are ~1.7e12.
+        const n = Number(v.timestamp);
+        if (Number.isFinite(n) && n > 0) {
+          createTime = new Date(n < 1e11 ? n * 1000 : n).toISOString();
+        }
+      }
+
+      return {
+        videoId: String(id),
+        url: v.url || null,
+        description: v.description ?? v.caption ?? null,
+        thumbnail: v.thumbnail ?? v.thumbnailUrl ?? null,
+        createTime,
+        views: Number(v.views ?? v.plays ?? v.playCount) || 0,
+        likes: Number(v.likes ?? v.likeCount) || 0,
+      };
+    })
+    .filter((v): v is SocialkitVideo => v !== null);
 }
 
 export async function fetchCreatorVideos(

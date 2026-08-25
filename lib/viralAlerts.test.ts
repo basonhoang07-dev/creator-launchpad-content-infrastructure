@@ -79,10 +79,45 @@ describe("parseCreatorInput", () => {
 });
 
 describe("normalizeSocialkitVideos", () => {
-  it("coerces missing counts to 0 and drops entries with no id", () => {
-    expect(normalizeSocialkitVideos([{ videoId: "a", views: "1200" }, { description: "no id" }])).toEqual([
+  it("coerces missing counts to 0 and drops entries with no usable id", () => {
+    expect(normalizeSocialkitVideos([{ videoId: "a", views: "1200" }, { description: "no id, no url" }])).toEqual([
       { videoId: "a", url: null, description: null, thumbnail: null, createTime: null, views: 1200, likes: 0 },
     ]);
+  });
+
+  it("reads TikTok's channel-videos shape", () => {
+    expect(
+      normalizeSocialkitVideos([
+        { videoId: "7522", url: "https://tiktok.com/x", description: "cap", thumbnail: "https://t/1.jpg", createTime: "2026-08-24T10:00:00Z", views: 5000, likes: 12 },
+      ])
+    ).toEqual([
+      { videoId: "7522", url: "https://tiktok.com/x", description: "cap", thumbnail: "https://t/1.jpg", createTime: "2026-08-24T10:00:00Z", views: 5000, likes: 12 },
+    ]);
+  });
+
+  it("reads Instagram's channel-reels shape — different field names, no id, Unix-seconds timestamp", () => {
+    // Regression: the old normalizer required `videoId` and would have
+    // dropped every Instagram reel, making IG tracking silently return zero.
+    expect(
+      normalizeSocialkitVideos([
+        { url: "https://www.instagram.com/reel/ABC/", caption: "my caption", thumbnailUrl: "https://ig/1.jpg", timestamp: 1756029600, plays: 8200 },
+      ])
+    ).toEqual([
+      {
+        videoId: "https://www.instagram.com/reel/ABC/",
+        url: "https://www.instagram.com/reel/ABC/",
+        description: "my caption",
+        thumbnail: "https://ig/1.jpg",
+        createTime: new Date(1756029600 * 1000).toISOString(),
+        views: 8200,
+        likes: 0,
+      },
+    ]);
+  });
+
+  it("treats an already-millisecond timestamp as milliseconds, not seconds", () => {
+    const ms = 1756029600000;
+    expect(normalizeSocialkitVideos([{ id: "z", timestamp: ms, views: 1 }])[0].createTime).toBe(new Date(ms).toISOString());
   });
 
   it("survives a null/undefined list", () => {
