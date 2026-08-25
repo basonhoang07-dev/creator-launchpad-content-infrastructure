@@ -10,7 +10,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  AlertCircle, CalendarCheck, CalendarClock, CalendarDays, Check, ChevronRight, ExternalLink, Folder, Layers, Loader2,
+  AlertCircle, CalendarCheck, CalendarClock, CalendarDays, Check, ChevronRight, ExternalLink, Flame, Folder, Layers, Loader2,
   Lock, Plus, Repeat, Shuffle, Sparkles, StickyNote, Table2, Target, Trash2, TrendingUp, Users, Video, Wand2, X,
 } from "lucide-react";
 import { C } from "@/lib/theme";
@@ -33,6 +33,7 @@ import CommentThread from "@/components/calendar/CommentThread";
 import AdaptScriptModal from "@/components/calendar/AdaptScriptModal";
 import EmbeddedVideoLink from "@/components/EmbeddedVideoLink";
 import ReferenceBreakdownPanel from "@/components/calendar/ReferenceBreakdownPanel";
+import ViralAlertsPanel from "@/components/calendar/ViralAlertsPanel";
 import { SchedulePreviewModal, CapacitySetupModal, NewBoardWizard, ConnectCalendarGate, type ScheduleSummary, type NewBoardPayload } from "@/components/calendar/modals";
 import { useToast, toastMessage } from "@/components/Toast";
 
@@ -92,7 +93,7 @@ function ContentCalendarInner({ clientId }: { clientId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [!!pageData]);
 
-  const [view, setView] = useState<"availability" | "table" | "calendar">("availability");
+  const [view, setView] = useState<"availability" | "table" | "calendar" | "viral">("availability");
   const [activeBrand, setActiveBrand] = useState("All");
   const [jumpApplied, setJumpApplied] = useState(false);
 
@@ -427,6 +428,7 @@ function ContentCalendarInner({ clientId }: { clientId: string }) {
     { id: "availability" as const, label: "Availability", icon: CalendarClock },
     { id: "table" as const, label: "Script Table", icon: Table2 },
     { id: "calendar" as const, label: "Calendar", icon: CalendarDays },
+    { id: "viral" as const, label: "Viral Alerts", icon: Flame },
   ];
 
   return (
@@ -446,7 +448,10 @@ function ContentCalendarInner({ clientId }: { clientId: string }) {
             </span>
             {viewTabs.map((t) => {
               const Icon = t.icon;
-              const locked = t.id !== "availability" && !availabilityConfigured;
+              // Viral Alerts is creator research, not scheduling — it
+              // doesn't depend on availability being set up the way the
+              // table/calendar views do.
+              const locked = t.id !== "availability" && t.id !== "viral" && !availabilityConfigured;
               return (
                 <Button key={t.id} variant={view === t.id ? "primary" : "secondary"} size="sm" onClick={() => setView(t.id)} style={locked ? { opacity: 0.55 } : undefined}>
                   {locked ? <Lock size={12} /> : <Icon size={13} />} {t.label}
@@ -475,7 +480,7 @@ function ContentCalendarInner({ clientId }: { clientId: string }) {
         </Card>
       ) : (
         <>
-          {(view === "table" || view === "calendar") && (
+          {(view === "table" || view === "calendar" || view === "viral") && (
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
               <BrandTab label="All boards" active={activeBrand === "All"} onClick={() => setActiveBrand("All")} icon={Layers} />
               {data.brands.map((b) => {
@@ -493,7 +498,7 @@ function ContentCalendarInner({ clientId }: { clientId: string }) {
               >
                 <Plus size={13} /> New board
               </button>
-              {activeBrand !== "All" && (
+              {activeBrand !== "All" && view !== "viral" && (
                 <button
                   onClick={() => setShowCapacitySetup(true)}
                   style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600, color: sessionCapacitySet ? C.accentLight : C.textFaint, background: sessionCapacitySet ? C.accentDim : "transparent", border: `1px solid ${sessionCapacitySet ? C.accent : C.border}`, borderRadius: 20, padding: "6px 12px", cursor: "pointer" }}
@@ -501,7 +506,7 @@ function ContentCalendarInner({ clientId }: { clientId: string }) {
                   <Video size={12} /> {sessionCapacitySet && activeCampaign ? `${activeCampaign.sessionCapacity}/session` : "Set filming capacity"}
                 </button>
               )}
-              <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+              <div style={{ marginLeft: "auto", display: view === "viral" ? "none" : "flex", gap: 8 }}>
                 <Button
                   variant="secondary" size="sm"
                   onClick={() => { setForm({ brand: activeBrand !== "All" ? activeBrand : "", title: "", format: "", recurFreq: "none" }); setShowAddConcept(true); }}
@@ -568,6 +573,8 @@ function ContentCalendarInner({ clientId }: { clientId: string }) {
           {view === "calendar" && (
             <CalendarGridView entries={entries} dailyVolume={dailyVolume} onAutoSchedule={() => requireCapacityThen("auto")} onOpen={setActiveEntry} onReschedule={rescheduleEntry} />
           )}
+
+          {view === "viral" && <ViralAlertsPanel clientId={clientId} activeBrand={activeBrand} />}
         </>
       )}
 

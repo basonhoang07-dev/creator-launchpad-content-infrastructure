@@ -24,6 +24,7 @@ import { fetchHomeData, type HomeData } from "@/lib/queries/home";
 import { fetchCommunityOverview, type CommunityData } from "@/lib/queries/community";
 import { todayPlus, getWeekKey, formatWeekLabel, isSameMonth, isWeekActuallyLogged, monthlyIncomeHistory, parseDateOnly, type WeeklyLog } from "@/lib/helpers";
 import CommunityOverview from "@/components/CommunityOverview";
+import ViralAlertsCard from "@/components/ViralAlertsCard";
 import WeeklyCheckInWizard from "@/components/WeeklyCheckInWizard";
 import CheckInDetailModal from "@/components/CheckInDetailModal";
 
@@ -267,6 +268,8 @@ export default function HomePage() {
         )}
         <SlateDivider style={{ marginTop: 16, borderRadius: 2, overflow: "hidden", width: 140 }} />
       </div>
+
+      {clientId && <ViralAlertsCard clientId={clientId} />}
 
       {(effectiveRole === "Client" || profile.role === "VA/Editor" || profile.role === "Creative Director") &&
         (() => {

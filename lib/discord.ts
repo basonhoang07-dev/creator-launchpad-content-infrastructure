@@ -170,6 +170,48 @@ export interface AccountabilityEmbedInput {
 
 const EMBED_COLOR_ACCOUNTABILITY = 0x9b59f6;
 
+// Posted to the client's own 1-on-1 channel (same channel resolution as a
+// recap — see findChannelIdByClientName) when a tracked creator's video
+// crosses that creator's views/24h threshold.
+export interface ViralAlertEmbedInput {
+  clientName: string;
+  creatorHandle: string;
+  platform: "tiktok" | "instagram";
+  brand: string | null;
+  description: string | null;
+  url: string | null;
+  thumbnail: string | null;
+  views: number;
+  velocity: number;
+}
+
+const EMBED_COLOR_VIRAL = 0xf5a623;
+
+export function buildViralAlertEmbed(input: ViralAlertEmbedInput) {
+  const fields: { name: string; value: string; inline?: boolean }[] = [
+    { name: "Pace", value: `${formatCount(input.velocity)} views / 24h`, inline: true },
+    { name: "Total views", value: formatCount(input.views), inline: true },
+    { name: "Creator", value: `@${input.creatorHandle}`, inline: true },
+  ];
+  if (input.brand) fields.push({ name: "Board", value: input.brand, inline: true });
+
+  return {
+    title: `🚀 Going viral — @${input.creatorHandle}`.slice(0, 256),
+    description: (input.description || "").slice(0, 4096) || undefined,
+    color: EMBED_COLOR_VIRAL,
+    url: input.url || undefined,
+    fields,
+    ...(input.thumbnail ? { thumbnail: { url: input.thumbnail } } : {}),
+    footer: { text: `Creator Launchpad · Viral Alert · ${input.clientName}` },
+  };
+}
+
+function formatCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, "")}K`;
+  return String(n);
+}
+
 export function buildAccountabilityEmbed(input: AccountabilityEmbedInput) {
   const fields: { name: string; value: string; inline?: boolean }[] = [
     { name: "Videos filmed", value: String(input.videosFilmed), inline: true },
