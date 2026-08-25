@@ -14,7 +14,8 @@
 // paid tier.
 
 import React, { useCallback, useEffect, useState } from "react";
-import { AlertCircle, Eye, FileText, Flame, Loader2, Play, Plus, RefreshCw, Trash2, TrendingUp } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { AlertCircle, Eye, FileText, Flame, Loader2, Play, Plug, Plus, RefreshCw, Trash2, TrendingUp } from "lucide-react";
 import { C } from "@/lib/theme";
 import { Card, Button, Badge, Field, EmptyState, inputStyle } from "@/components/ui";
 import { createClient } from "@/lib/supabase";
@@ -47,6 +48,27 @@ export default function ViralAlertsPanel({ clientId, activeBrand }: { clientId: 
   const [error, setError] = useState("");
   const [transcribingId, setTranscribingId] = useState<string | null>(null);
   const [transcripts, setTranscripts] = useState<Record<string, string>>({});
+  const router = useRouter();
+  // null = still checking. Same as the Breakdown panel: only the `connected`
+  // flag is readable client-side, never the key itself. Checked up front so a
+  // client without one gets a setup path instead of an error after clicking.
+  const [connected, setConnected] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data } = await createClient()
+        .from("integrations")
+        .select("connected")
+        .eq("client_id", clientId)
+        .eq("integration_key", "socialkit")
+        .maybeSingle();
+      if (!cancelled) setConnected(!!data?.connected);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [clientId]);
 
   const reload = useCallback(async () => {
     const supabase = createClient();
@@ -266,8 +288,8 @@ export default function ViralAlertsPanel({ clientId, activeBrand }: { clientId: 
           <div style={{ fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
             <TrendingUp size={15} /> Creators you're watching
           </div>
-          {creators.length > 0 && (
-            <Button size="sm" variant="secondary" onClick={checkNow} disabled={checking}>
+          {creators.length > 0 && connected !== false && (
+            <Button size="sm" variant="secondary" onClick={checkNow} disabled={checking || connected === null}>
               {checking ? <Loader2 size={12} className="cl-spin" /> : <RefreshCw size={12} />}
               {checking ? "Checking..." : "Check now"}
             </Button>
@@ -279,6 +301,24 @@ export default function ViralAlertsPanel({ clientId, activeBrand }: { clientId: 
           just records where their videos stand — alerts start from the check after that, once there's a rate to compare
           against.
         </div>
+
+        {connected === false && (
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 12, background: C.surface2, border: `1px dashed ${C.borderLight}`, borderRadius: 10, padding: 14, marginBottom: 14 }}>
+            <div style={{ width: 32, height: 32, borderRadius: 8, background: C.accentDim, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <Plug size={15} color={C.accentLight} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Connect SocialKit to start watching</div>
+              <div style={{ fontSize: 11.5, color: C.textMuted, lineHeight: 1.6, marginBottom: 10 }}>
+                This is what reads a creator's recent posts and their view counts. Takes about a minute, and it's free
+                for 20 checks a month. You can still add creators below in the meantime.
+              </div>
+              <Button size="sm" onClick={() => router.push("/integrations?connect=socialkit")}>
+                <Plug size={12} /> Set it up
+              </Button>
+            </div>
+          </div>
+        )}
 
         <div style={{ display: "grid", gap: 8 }}>
           {creators.map((c) => (
