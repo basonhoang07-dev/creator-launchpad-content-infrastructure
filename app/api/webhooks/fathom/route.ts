@@ -40,6 +40,10 @@ import { deliverRecap } from "@/lib/recapDelivery";
 import { verifyFathomSignature, extractInviteeEmails, extractTranscript, extractMeta } from "@/lib/fathomWebhook";
 import { isAnthropicConfigured } from "@/lib/anthropicStatus";
 
+// Claude generation over a full call transcript can run long, and Fathom
+// retries on a non-2xx; 60s is the Hobby-plan maximum.
+export const maxDuration = 60;
+
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
 

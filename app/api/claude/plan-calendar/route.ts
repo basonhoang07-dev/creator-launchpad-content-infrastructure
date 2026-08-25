@@ -12,6 +12,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireClientAccess, checkAiUsageCap, logAiUsage } from "@/lib/auth";
 import { isAnthropicConfigured, ANTHROPIC_NOT_CONFIGURED_MESSAGE } from "@/lib/anthropicStatus";
 
+// Claude planning across a whole board can run long; 60s is the Hobby-plan
+// maximum.
+export const maxDuration = 60;
+
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export async function POST(req: NextRequest) {

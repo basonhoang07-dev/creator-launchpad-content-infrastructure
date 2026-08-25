@@ -19,6 +19,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { runViralCheckForClient, type TrackedCreatorRow } from "@/lib/runViralCheck";
 
+// Sweeps every client with tracked creators, one SocialKit round trip per
+// creator; 60s is the Hobby-plan maximum.
+export const maxDuration = 60;
+
 export async function GET(req: NextRequest) {
   // Vercel sends the CRON_SECRET as a bearer token. Without this the route
   // is a public endpoint that would let anyone burn every client's SocialKit

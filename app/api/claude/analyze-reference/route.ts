@@ -25,6 +25,13 @@ import { isAnthropicConfigured, ANTHROPIC_NOT_CONFIGURED_MESSAGE } from "@/lib/a
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+// Measured at ~40s end to end on a real Reel (SocialKit transcript fetch,
+// then a 2500-token framework generation). That's close enough to the
+// default ceiling that a slower-than-usual Claude response would 504 —
+// after SocialKit had already charged the client a request. 60s is the
+// Hobby-plan maximum.
+export const maxDuration = 60;
+
 function detectPlatform(url: string): "tiktok" | "instagram" | null {
   const u = url.toLowerCase();
   if (u.includes("tiktok.com")) return "tiktok";

@@ -10,6 +10,10 @@ import { requireClientAccess } from "@/lib/auth";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { runViralCheckForClient, type TrackedCreatorRow } from "@/lib/runViralCheck";
 
+// One SocialKit round trip per tracked creator, run in sequence — a client
+// watching several creators adds up fast. 60s is the Hobby-plan maximum.
+export const maxDuration = 60;
+
 export async function POST(req: NextRequest) {
   const { clientId } = await req.json();
   if (!clientId) return NextResponse.json({ error: "Missing clientId" }, { status: 400 });

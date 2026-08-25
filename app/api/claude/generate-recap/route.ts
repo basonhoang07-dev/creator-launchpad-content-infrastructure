@@ -5,6 +5,10 @@ import { generateRecapFromTranscript } from "@/lib/generateRecap";
 import { deliverRecap } from "@/lib/recapDelivery";
 import { isAnthropicConfigured, ANTHROPIC_NOT_CONFIGURED_MESSAGE } from "@/lib/anthropicStatus";
 
+// Claude generation over a full call transcript can run long; 60s is the
+// Hobby-plan maximum.
+export const maxDuration = 60;
+
 export async function POST(req: NextRequest) {
   if (!isAnthropicConfigured()) {
     return NextResponse.json({ error: ANTHROPIC_NOT_CONFIGURED_MESSAGE }, { status: 503 });
