@@ -25,6 +25,8 @@ function entry(overrides: Partial<CalendarEntry>): CalendarEntry {
     driveFolderUrl: null,
     comments: [],
     sortOrder: 0,
+    referenceTranscript: null,
+    referenceFramework: null,
     ...overrides,
   };
 }

@@ -32,6 +32,7 @@ import AvailabilityEditor from "@/components/calendar/AvailabilityEditor";
 import CommentThread from "@/components/calendar/CommentThread";
 import AdaptScriptModal from "@/components/calendar/AdaptScriptModal";
 import EmbeddedVideoLink from "@/components/EmbeddedVideoLink";
+import ReferenceBreakdownPanel from "@/components/calendar/ReferenceBreakdownPanel";
 import { SchedulePreviewModal, CapacitySetupModal, NewBoardWizard, ConnectCalendarGate, type ScheduleSummary, type NewBoardPayload } from "@/components/calendar/modals";
 import { useToast, toastMessage } from "@/components/Toast";
 
@@ -752,6 +753,7 @@ function ContentCalendarInner({ clientId }: { clientId: string }) {
             <input style={inputStyle} value={activeEntry.referenceLink} onChange={(e) => updateEntry(activeEntry.id, { referenceLink: e.target.value })} placeholder="Paste a link to the inspiration/reference video" />
           </Field>
           {activeEntry.referenceLink && <EmbeddedVideoLink url={activeEntry.referenceLink} label="Preview" />}
+          <ReferenceBreakdownPanel entry={activeEntry} clientId={clientId} onUpdated={(patch) => patchLocalEntry(activeEntry.id, patch)} />
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <Field label="Raw video (link)">

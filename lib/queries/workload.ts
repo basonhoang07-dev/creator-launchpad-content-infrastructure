@@ -40,6 +40,8 @@ function mapEntryRow(row: any): CalendarEntry {
     driveFolderUrl: row.drive_folder_url || null,
     comments: [],
     sortOrder: row.sort_order ?? 0,
+    referenceTranscript: row.reference_transcript || null,
+    referenceFramework: row.reference_framework || null,
   };
 }
 

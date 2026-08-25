@@ -115,7 +115,11 @@ create table calendar_entries (
   -- Manual ordering within a status group — defaults to creation order,
   -- reassigned by swapping values when the user moves a script up/down.
   -- See db/migration_007_calendar_sort_order.sql.
-  sort_order double precision
+  sort_order double precision,
+  -- Cached reference-video breakdown (transcript + framework table). See
+  -- db/migration_010_reference_breakdown.sql.
+  reference_transcript text,
+  reference_framework jsonb
 );
 
 create table calendar_comments (

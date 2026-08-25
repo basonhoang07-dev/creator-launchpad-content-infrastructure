@@ -38,6 +38,18 @@ export interface CalendarEntry {
   driveFolderUrl: string | null;
   comments: Comment[];
   sortOrder: number;
+  referenceTranscript: string | null;
+  referenceFramework: ReferenceFrameworkPart[] | null;
+}
+
+export interface ReferenceFrameworkPart {
+  part: string;
+  content: string;
+  curiosityLoop: string;
+  immutable: string | null;
+  yourVersion: string;
+  tonality: string;
+  visual: string | null;
 }
 
 export interface TrashedEntry {
@@ -91,6 +103,8 @@ function mapEntryRow(row: any): CalendarEntry {
       .map((c: any): Comment => ({ id: c.id, authorName: c.author_name, authorRole: c.author_role, text: c.body, createdAt: c.created_at }))
       .sort((a: Comment, b: Comment) => a.createdAt.localeCompare(b.createdAt)),
     sortOrder: row.sort_order ?? 0,
+    referenceTranscript: row.reference_transcript || null,
+    referenceFramework: row.reference_framework || null,
   };
 }
 
