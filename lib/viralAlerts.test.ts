@@ -120,8 +120,59 @@ describe("normalizeSocialkitVideos", () => {
     expect(normalizeSocialkitVideos([{ id: "z", timestamp: ms, views: 1 }])[0].createTime).toBe(new Date(ms).toISOString());
   });
 
+  it("handles a real Instagram channel-reels item, captured live from the API", () => {
+    // Captured from api.socialkit.dev/instagram/channel-reels — the docs list
+    // the fields but not `id`, and the shape is what the old normalizer choked
+    // on. Pinned here so a future edit can't silently reintroduce that.
+    const live = {
+      id: "3712345678901234567",
+      shortcode: "DNxAbCdEfGh",
+      url: "https://www.instagram.com/reel/DNxAbCdEfGh/",
+      type: "video",
+      isVideo: true,
+      caption: "Soothing spacewalk scenes.",
+      likes: 210_000,
+      comments: 1_200,
+      views: 3_060_716,
+      plays: 3_060_716,
+      duration: 31.2,
+      timestamp: 1787081860,
+      thumbnailUrl: "https://scontent.cdninstagram.com/x.jpg",
+      videoUrl: "https://scontent.cdninstagram.com/x.mp4",
+      width: 1080,
+      height: 1920,
+    };
+    expect(normalizeSocialkitVideos([live])).toEqual([
+      {
+        videoId: "3712345678901234567",
+        url: "https://www.instagram.com/reel/DNxAbCdEfGh/",
+        description: "Soothing spacewalk scenes.",
+        thumbnail: "https://scontent.cdninstagram.com/x.jpg",
+        createTime: new Date(1787081860 * 1000).toISOString(),
+        views: 3_060_716,
+        likes: 210_000,
+      },
+    ]);
+  });
+
   it("survives a null/undefined list", () => {
     expect(normalizeSocialkitVideos(null as any)).toEqual([]);
+  });
+});
+
+describe("first check establishes a baseline rather than alerting", () => {
+  it("does not fire on a creator's back catalogue the first time they're tracked", () => {
+    // Every video older than 24h has no previous reading on a first check, so
+    // there's nothing to measure a rate against — which is exactly what stops
+    // "track a creator" from dumping their whole history into Discord.
+    const backCatalogue = [
+      video({ views: 3_060_716, createTime: hoursAgo(165) }),
+      video({ views: 9_093_943, createTime: hoursAgo(264) }),
+    ];
+    backCatalogue.forEach((v) => {
+      expect(velocityForNewVideo(v, NOW)).toBeNull();
+      expect(computeVelocity(v.views, null, null, NOW)).toBeNull();
+    });
   });
 });
 

@@ -103,6 +103,12 @@ export default function ViralAlertsPanel({ clientId, activeBrand }: { clientId: 
   async function checkNow() {
     setError("");
     setChecking(true);
+    // A creator with no prior reading has nothing to measure a rate against,
+    // so their first check can only set a baseline (that's what stops
+    // tracking someone from dumping their whole back catalogue into Discord).
+    // Without saying so, a first run reports "nothing over the threshold" and
+    // reads as broken.
+    const firstTimers = (creators || []).filter((c) => !c.lastCheckedAt).length;
     try {
       const res = await fetch("/api/creators/check", {
         method: "POST",
@@ -116,6 +122,11 @@ export default function ViralAlertsPanel({ clientId, activeBrand }: { clientId: 
         showToast(`${json.hits.length} video${json.hits.length > 1 ? "s" : ""} going viral — posted to your Discord.`, "success");
       } else if (json.errors?.length) {
         setError(json.errors.join(" · "));
+      } else if (firstTimers > 0) {
+        showToast(
+          `Baseline set for ${firstTimers} creator${firstTimers > 1 ? "s" : ""} — alerts start from your next check, once there's a rate to measure.`,
+          "success"
+        );
       } else {
         showToast("Checked — nothing over the threshold yet.", "success");
       }
@@ -264,7 +275,9 @@ export default function ViralAlertsPanel({ clientId, activeBrand }: { clientId: 
         </div>
         <div style={{ fontSize: 11.5, color: C.textFaint, marginBottom: 14, lineHeight: 1.5 }}>
           Paste a top performer in this niche and we'll watch their recent posts. When one starts climbing past the
-          threshold, it shows up here, on your Home page, and in your Discord channel.
+          threshold, it shows up here, on your Home page, and in your Discord channel. The first check on a new creator
+          just records where their videos stand — alerts start from the check after that, once there's a rate to compare
+          against.
         </div>
 
         <div style={{ display: "grid", gap: 8 }}>
