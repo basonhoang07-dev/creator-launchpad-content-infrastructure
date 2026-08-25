@@ -64,7 +64,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: ANTHROPIC_NOT_CONFIGURED_MESSAGE }, { status: 503 });
   }
 
-  const { clientId, entryId, referenceUrl } = await req.json();
+  // createInBrand: used by the Breakdown tab — instead of attaching to an
+  // existing script, it files the result as a NEW unscripted concept on that
+  // brand board, so a reference goes from "link I found" to "concept ready to
+  // write" in one action.
+  const { clientId, entryId, referenceUrl, createInBrand } = await req.json();
   if (!referenceUrl?.trim()) {
     return NextResponse.json({ error: "No reference URL provided" }, { status: 400 });
   }
@@ -105,6 +109,8 @@ Full transcript of the reference video:
 ${transcript}
 """
 
+Also give the video a short concept title (under 60 characters) — specific to what this video is actually about, the way a creator would name it on their content board. Not generic like "Reference video".
+
 Break it into exactly these four parts, in this order: "Variation of Hooks", "Intention", "Body & Context", "Lesson".
 
 For each part, give:
@@ -116,7 +122,7 @@ For each part, give:
 - visual: wardrobe, background, framing, or setting guidance relevant to this specific part, if there's anything distinct to call out — null if it's the same as the rest of the video
 
 Respond with ONLY valid JSON, no markdown fences, no preamble. Exact shape:
-{"parts":[{"part":"Variation of Hooks","content":"...","curiosityLoop":"...","immutable":"..." | null,"yourVersion":"...","tonality":"...","visual":"..." | null},{"part":"Intention","content":"...","curiosityLoop":"...","immutable":"..." | null,"yourVersion":"...","tonality":"...","visual":"..." | null},{"part":"Body & Context","content":"...","curiosityLoop":"...","immutable":"..." | null,"yourVersion":"...","tonality":"...","visual":"..." | null},{"part":"Lesson","content":"...","curiosityLoop":"...","immutable":"..." | null,"yourVersion":"...","tonality":"...","visual":"..." | null}]}`;
+{"title":"...","parts":[{"part":"Variation of Hooks","content":"...","curiosityLoop":"...","immutable":"..." | null,"yourVersion":"...","tonality":"...","visual":"..." | null},{"part":"Intention","content":"...","curiosityLoop":"...","immutable":"..." | null,"yourVersion":"...","tonality":"...","visual":"..." | null},{"part":"Body & Context","content":"...","curiosityLoop":"...","immutable":"..." | null,"yourVersion":"...","tonality":"...","visual":"..." | null},{"part":"Lesson","content":"...","curiosityLoop":"...","immutable":"..." | null,"yourVersion":"...","tonality":"...","visual":"..." | null}]}`;
 
   const message = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
@@ -125,7 +131,7 @@ Respond with ONLY valid JSON, no markdown fences, no preamble. Exact shape:
   });
   const raw = message.content.filter((b) => b.type === "text").map((b) => (b as any).text).join("\n").trim();
 
-  let parsed: { parts: unknown };
+  let parsed: { title?: string; parts: unknown };
   try {
     parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
   } catch {
@@ -140,7 +146,44 @@ Respond with ONLY valid JSON, no markdown fences, no preamble. Exact shape:
       .update({ reference_transcript: transcript, reference_framework: parsed.parts })
       .eq("id", entryId);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ transcript, framework: parsed.parts });
   }
 
-  return NextResponse.json({ transcript, framework: parsed.parts });
+  if (createInBrand) {
+    // Same bottom-of-the-board placement new scripts get everywhere else.
+    const { data: last } = await supabase
+      .from("calendar_entries")
+      .select("sort_order")
+      .eq("client_id", clientId)
+      .order("sort_order", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const { data: created, error } = await supabase
+      .from("calendar_entries")
+      .insert({
+        client_id: clientId,
+        brand: createInBrand,
+        title: (parsed.title || "Reference breakdown").slice(0, 120),
+        format: "",
+        script: "",
+        status: "Unscripted",
+        entry_date: null,
+        reference_link: referenceUrl,
+        reference_transcript: transcript,
+        reference_framework: parsed.parts,
+        notes: "Created from a reference breakdown — the framework below is the structure to rebuild with your own story.",
+        posted: false,
+        view_count: 0,
+        bonus_logged: false,
+        sort_order: (last?.sort_order ?? 0) + 1,
+      })
+      .select("id, title")
+      .single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    return NextResponse.json({ transcript, framework: parsed.parts, entry: created });
+  }
+
+  return NextResponse.json({ transcript, framework: parsed.parts, title: parsed.title });
 }
