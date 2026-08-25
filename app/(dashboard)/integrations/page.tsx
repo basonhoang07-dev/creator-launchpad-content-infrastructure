@@ -32,6 +32,9 @@ function IntegrationsInner({ clientId }: { clientId: string }) {
   const [socialkitKey, setSocialkitKey] = useState("");
   const [savingSocialkit, setSavingSocialkit] = useState(false);
   const [socialkitError, setSocialkitError] = useState("");
+  // True when they arrived here from a script's "Set it up" prompt, so the
+  // success message can point them back to where they started.
+  const [cameFromScript, setCameFromScript] = useState(false);
 
   const reload = useCallback(async () => {
     setIntegrations(await fetchIntegrations(createClient(), clientId));
@@ -61,6 +64,19 @@ function IntegrationsInner({ clientId }: { clientId: string }) {
       router.replace("/integrations");
     } else if (gcalError) {
       showToast(gcalError);
+      router.replace("/integrations");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  // Deep link from the Content Calendar's "Set it up" prompt
+  // (/integrations?connect=socialkit) — opens the connect flow directly
+  // instead of leaving them to find the right card on this page.
+  useEffect(() => {
+    if (searchParams.get("connect") === "socialkit") {
+      setSocialkitError("");
+      setCameFromScript(true);
+      setShowSocialkitModal(true);
       router.replace("/integrations");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -97,7 +113,12 @@ function IntegrationsInner({ clientId }: { clientId: string }) {
       if (!res.ok) throw new Error((await res.json()).error || "Couldn't save that key");
       setShowSocialkitModal(false);
       setSocialkitKey("");
-      showToast("SocialKit connected.", "success");
+      showToast(
+        cameFromScript
+          ? "SocialKit connected — head back to your script and hit \"Break down this reference.\""
+          : "SocialKit connected.",
+        "success"
+      );
       reload();
     } catch (err) {
       setSocialkitError(toastMessage(err, "Couldn't save that key — try again."));
@@ -194,25 +215,42 @@ function IntegrationsInner({ clientId }: { clientId: string }) {
       {showSocialkitModal && (
         <Modal title="Connect SocialKit" onClose={() => setShowSocialkitModal(false)} width={460}>
           <div style={{ fontSize: 12.5, color: C.textMuted, lineHeight: 1.6, marginBottom: 16 }}>
-            This powers <b style={{ color: C.text }}>"Break down this reference"</b> on a script — paste a reference
-            Instagram Reel or TikTok and get its full transcript plus a framework breakdown.
+            This powers <b style={{ color: C.text }}>"Break down this reference"</b> on a script — paste any Instagram
+            Reel or TikTok you're modelling after, and get its full transcript plus a framework breakdown of why it
+            works and how to rebuild it with your own story.
           </div>
-          <div style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 10, padding: 14, marginBottom: 16 }}>
-            <div style={{ fontSize: 11.5, color: C.textMuted, lineHeight: 1.7 }}>
-              <div style={{ marginBottom: 6 }}>
-                <b style={{ color: C.accentLight }}>1.</b> Sign up free at{" "}
+
+          <div style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 10, padding: 14, marginBottom: 14 }}>
+            <div style={{ display: "grid", gap: 12, fontSize: 11.5, color: C.textMuted, lineHeight: 1.6 }}>
+              <div>
+                <div style={{ color: C.text, fontWeight: 600, marginBottom: 3 }}>
+                  <span style={{ color: C.accentLight }}>1.</span> Make a free SocialKit account
+                </div>
+                Go to{" "}
                 <a href="https://socialkit.dev" target="_blank" rel="noopener noreferrer" style={{ color: C.accentLight }}>
                   socialkit.dev
                 </a>{" "}
-                — no card needed, 20 breakdowns a month.
-              </div>
-              <div style={{ marginBottom: 6 }}>
-                <b style={{ color: C.accentLight }}>2.</b> Copy your API key from their dashboard.
+                and sign up. No card needed — the free plan covers 20 breakdowns a month.
               </div>
               <div>
-                <b style={{ color: C.accentLight }}>3.</b> Paste it below.
+                <div style={{ color: C.text, fontWeight: 600, marginBottom: 3 }}>
+                  <span style={{ color: C.accentLight }}>2.</span> Copy your API key
+                </div>
+                Once you're in, open their dashboard and find the API key section. Copy the key — it's one long line of
+                letters and numbers.
+              </div>
+              <div>
+                <div style={{ color: C.text, fontWeight: 600, marginBottom: 3 }}>
+                  <span style={{ color: C.accentLight }}>3.</span> Paste it below and hit Connect
+                </div>
+                That's it — head back to any script with a reference link and hit "Break down this reference."
               </div>
             </div>
+          </div>
+
+          <div style={{ fontSize: 11, color: C.textFaint, lineHeight: 1.6, marginBottom: 16 }}>
+            Your key is stored securely and only ever used for your own breakdowns — it's never visible to other clients
+            or your editors. You can disconnect it here any time.
           </div>
           <Field label="SocialKit API key">
             <input

@@ -9,10 +9,12 @@
 // (reference_transcript/reference_framework) so reopening the script never
 // re-spends the API credits — only an explicit "Re-analyze" click does.
 
-import React, { useState } from "react";
-import { AlertCircle, ChevronDown, ChevronUp, Loader2, Sparkles } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { AlertCircle, ChevronDown, ChevronUp, Loader2, Plug, Sparkles } from "lucide-react";
 import { C } from "@/lib/theme";
 import { Card, Button, Badge } from "@/components/ui";
+import { createClient } from "@/lib/supabase";
 import type { CalendarEntry, ReferenceFrameworkPart } from "@/lib/queries/calendar";
 import { useToast, toastMessage } from "@/components/Toast";
 
@@ -63,9 +65,30 @@ export default function ReferenceBreakdownPanel({
   onUpdated: (patch: Partial<CalendarEntry>) => void;
 }) {
   const { showToast } = useToast();
+  const router = useRouter();
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState("");
   const [transcriptOpen, setTranscriptOpen] = useState(false);
+  // null = still checking. Only the `connected` flag is readable here — the
+  // API key itself lives in the RLS-locked socialkit_connections table and
+  // never reaches the browser.
+  const [connected, setConnected] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data } = await createClient()
+        .from("integrations")
+        .select("connected")
+        .eq("client_id", clientId)
+        .eq("integration_key", "socialkit")
+        .maybeSingle();
+      if (!cancelled) setConnected(!!data?.connected);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [clientId]);
 
   if (!entry.referenceLink?.trim()) return null;
 
@@ -92,16 +115,42 @@ export default function ReferenceBreakdownPanel({
   }
 
   const hasBreakdown = !!entry.referenceFramework?.length;
+  // Don't dead-end them on an error after the click — if SocialKit isn't
+  // connected yet, hand them the setup path up front instead. Deep-links
+  // straight into the connect flow on Integrations rather than dropping
+  // them on the page to hunt for the right card.
+  const needsSetup = connected === false && !hasBreakdown;
 
   return (
     <div style={{ marginBottom: 16 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: hasBreakdown ? 12 : 0 }}>
         <div style={{ fontSize: 12, color: C.textMuted, fontWeight: 600 }}>Reference breakdown</div>
-        <Button size="sm" variant="secondary" onClick={analyze} disabled={analyzing}>
-          {analyzing ? <Loader2 size={12} className="cl-spin" /> : <Sparkles size={12} />}
-          {analyzing ? "Analyzing..." : hasBreakdown ? "Re-analyze" : "Break down this reference"}
-        </Button>
+        {!needsSetup && (
+          <Button size="sm" variant="secondary" onClick={analyze} disabled={analyzing || connected === null}>
+            {analyzing ? <Loader2 size={12} className="cl-spin" /> : <Sparkles size={12} />}
+            {analyzing ? "Analyzing..." : hasBreakdown ? "Re-analyze" : "Break down this reference"}
+          </Button>
+        )}
       </div>
+
+      {needsSetup && (
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 12, background: C.surface2, border: `1px dashed ${C.borderLight}`, borderRadius: 10, padding: 14, marginTop: 10 }}>
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: C.accentDim, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <Plug size={15} color={C.accentLight} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Turn this reference into a script framework</div>
+            <div style={{ fontSize: 11.5, color: C.textMuted, lineHeight: 1.6, marginBottom: 10 }}>
+              Pulls the full transcript off this Reel/TikTok and breaks it into hooks, intention, body, and lesson — with
+              what to keep, what to swap for your own story, and how to deliver it. Takes about a minute to set up, and
+              it's free for 20 breakdowns a month.
+            </div>
+            <Button size="sm" onClick={() => router.push("/integrations?connect=socialkit")}>
+              <Plug size={12} /> Set it up
+            </Button>
+          </div>
+        </div>
+      )}
 
       {error && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11.5, color: C.danger, marginTop: 10 }}>
