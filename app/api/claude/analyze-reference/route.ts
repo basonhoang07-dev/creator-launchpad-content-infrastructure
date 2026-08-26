@@ -24,6 +24,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
 import { requireClientAccess, checkAiUsageCap, logAiUsage } from "@/lib/auth";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
+import { detectPlatform, getSocialkitKey, fetchTranscript } from "@/lib/socialkit";
 import { isAnthropicConfigured, ANTHROPIC_NOT_CONFIGURED_MESSAGE } from "@/lib/anthropicStatus";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -34,40 +35,6 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 // after SocialKit had already charged the client a request. 60s is the
 // Hobby-plan maximum.
 export const maxDuration = 60;
-
-function detectPlatform(url: string): "tiktok" | "instagram" | null {
-  const u = url.toLowerCase();
-  if (u.includes("tiktok.com")) return "tiktok";
-  if (u.includes("instagram.com")) return "instagram";
-  return null;
-}
-
-// Read via the service-role client — socialkit_connections is RLS-locked
-// with no policies, same as the Google token tables.
-async function getSocialkitKey(clientId: string): Promise<string | null> {
-  const admin = createAdminSupabaseClient();
-  const { data } = await admin.from("socialkit_connections").select("api_key").eq("client_id", clientId).maybeSingle();
-  return data?.api_key || process.env.SOCIALKIT_API_KEY || null;
-}
-
-async function fetchTranscript(platform: "tiktok" | "instagram", url: string, accessKey: string): Promise<string> {
-  const endpoint = `https://api.socialkit.dev/${platform}/transcript?access_key=${encodeURIComponent(accessKey)}&url=${encodeURIComponent(url)}`;
-  const res = await fetch(endpoint);
-  const json = await res.json().catch(() => ({}));
-
-  // A rejected key looks nothing like a bad video link to the user — call it
-  // out explicitly instead of letting it read as "this video won't work."
-  if (res.status === 401 || res.status === 403) {
-    throw new Error("SocialKit rejected that API key — reconnect it under Integrations.");
-  }
-  if (res.status === 429) {
-    throw new Error("You've used up this month's SocialKit breakdowns (free tier is 20/month) — it resets next month.");
-  }
-  if (!res.ok || !json.success) {
-    throw new Error(json?.error || `Couldn't fetch that ${platform === "tiktok" ? "TikTok" : "Instagram"} video's transcript — check the link is public`);
-  }
-  return (json.data?.transcript || "").trim();
-}
 
 export async function POST(req: NextRequest) {
   if (!isAnthropicConfigured()) {

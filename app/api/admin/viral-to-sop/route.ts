@@ -2,67 +2,87 @@
 //
 // Turns a viral alert into a Format SOP — the step that makes the whole
 // pipeline worth having. Discovery (Viral Alerts) and distribution (Format
-// SOPs) already existed but never touched: a breakdown run on a viral video
-// stayed buried in whichever client's script it came from, so the same
-// format had to be re-analysed for every client in that niche.
+// SOPs) already existed but never touched: a proven format stayed buried in
+// whichever client's board it fired on, so the same format had to be
+// re-found for every other client in that niche.
 //
-// Reuses the existing breakdown engine rather than a second prompt, so an
-// SOP says exactly what the client sees on their own script. If the video
-// has already been broken down anywhere, that cached result is used and no
-// API credit is spent.
+// A Format SOP here is an EDITOR-facing production spec, not a scripting
+// framework — it follows the house structure already used in the written
+// SOPs (Content Format / Reference Video / Prep / The Hook / Basic editing /
+// Always Do These / Avoid These / Approved Resources). That's a different
+// document from the Breakdown tab's four-beat script framework, which is why
+// this has its own prompt rather than reusing that route's output.
+//
+// The transcript is the only real signal available — nobody here watches the
+// video — so anything visual is inferred from what's said and how it's
+// paced. The prompt is told to write those calls as "check this against the
+// reference" rather than invent a font or asset, and the SOP itself carries
+// a line saying so, matching the "(Inferred Standard)" convention in the
+// hand-written ones.
 
+import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentProfile } from "@/lib/supabase/server";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
+import { detectPlatform, getSocialkitKey, fetchTranscript } from "@/lib/socialkit";
+import { isAnthropicConfigured, ANTHROPIC_NOT_CONFIGURED_MESSAGE } from "@/lib/anthropicStatus";
 
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+// Same ceiling as the breakdown route: a transcript fetch plus a long
+// generation runs ~40s, and 60s is the Vercel Hobby maximum.
 export const maxDuration = 60;
 
-// Renders the structured breakdown as SOP markdown. Kept close to how the
-// Breakdown tab lays it out — plug-and-play skeleton first, then why it
-// works, then what to change and how to shoot it.
-function breakdownToSopBody(breakdown: any, sourceUrl: string, handle: string, niche: string | null): string {
-  const parts = Array.isArray(breakdown?.parts) ? breakdown.parts : [];
-  const whatToChange = Array.isArray(breakdown?.whatToChange) ? breakdown.whatToChange : [];
-  const delivery = breakdown?.delivery || {};
-  const tonality = Array.isArray(delivery.tonality) ? delivery.tonality : [];
+interface FormatSpec {
+  contentFormat?: string;
+  title?: string;
+  prep?: string[];
+  hook?: string[];
+  editing?: string[];
+  alwaysDo?: string[];
+  avoid?: string[];
+  resources?: string[];
+}
 
-  const lines: string[] = [];
-  lines.push(`**Source:** [@${handle}'s reel](${sourceUrl})${niche ? ` · **Niche:** ${niche}` : ""}`);
-  lines.push("");
-  lines.push("This format is proven — it crossed the viral threshold in a real campaign. Rebuild it with your own story; don't copy the specifics.");
-  lines.push("");
+function bullets(items: unknown): string[] {
+  return Array.isArray(items) ? items.filter((i): i is string => typeof i === "string" && i.trim().length > 0) : [];
+}
 
-  parts.forEach((p: any) => {
-    lines.push(`## ${p.part}`);
-    lines.push("");
-    lines.push("**Plug & play**");
-    lines.push("");
-    lines.push(p.framework || "");
-    lines.push("");
-    lines.push(`**Why it works:** ${p.explanation || ""}`);
-    lines.push("");
-  });
+// Renders the spec as markdown in the house structure. A section with
+// nothing in it is dropped rather than left as an empty heading.
+function specToSopBody(spec: FormatSpec, sourceUrl: string, handle: string, niche: string | null, platform: string): string {
+  const out: string[] = [];
+  const section = (heading: string, items: string[]) => {
+    if (items.length === 0) return;
+    out.push(`## ${heading}`, "");
+    items.forEach((i) => out.push(`- ${i}`));
+    out.push("");
+  };
 
-  if (whatToChange.length) {
-    lines.push("## Change this to make it yours");
-    lines.push("");
-    whatToChange.forEach((c: string) => lines.push(`- ${c}`));
-    lines.push("");
-  }
+  out.push(`**Content Format:** ${spec.contentFormat || "Talking head"}`);
+  out.push(`**Reference Video:** [@${handle} on ${platform === "tiktok" ? "TikTok" : "Instagram"}](${sourceUrl})`);
+  if (niche) out.push(`**Niche:** ${niche}`);
+  out.push("");
+  out.push("This format is proven — it crossed the viral threshold on a tracked creator. Rebuild the structure with your own story; don't copy their specifics.");
+  out.push("");
+  out.push("_The visual and editing calls below are inferred from the reference's audio and pacing. Watch the reference video and confirm them before briefing an editor._");
+  out.push("");
 
-  if (delivery.wardrobe || delivery.setting || tonality.length) {
-    lines.push("## How to shoot it");
-    lines.push("");
-    if (delivery.wardrobe) lines.push(`**Wear:** ${delivery.wardrobe}`);
-    if (delivery.setting) lines.push(`**Setting:** ${delivery.setting}`);
-    if (delivery.wardrobe || delivery.setting) lines.push("");
-    tonality.forEach((t: any) => lines.push(`- **${t.section}:** ${t.direction}`));
-  }
+  section("Prep", bullets(spec.prep));
+  section("Step 1: The Hook", bullets(spec.hook));
+  section("Step 2: Basic editing", bullets(spec.editing));
+  section("Step 3: Always Do These", bullets(spec.alwaysDo));
+  section("Step 4: Avoid These Common Mistakes", bullets(spec.avoid));
+  section("Step 5: Approved Resources", [`Primary reference: ${sourceUrl}`, ...bullets(spec.resources)]);
 
-  return lines.join("\n").trim();
+  return out.join("\n").trim();
 }
 
 export async function POST(req: NextRequest) {
+  if (!isAnthropicConfigured()) {
+    return NextResponse.json({ error: ANTHROPIC_NOT_CONFIGURED_MESSAGE }, { status: 503 });
+  }
+
   const { clientId, videoId } = await req.json();
   if (!clientId || !videoId) {
     return NextResponse.json({ error: "Missing clientId or videoId" }, { status: 400 });
@@ -79,7 +99,7 @@ export async function POST(req: NextRequest) {
 
   const { data: video, error: videoError } = await admin
     .from("tracked_creator_videos")
-    .select("id, url, description, thumbnail, views, alerted_velocity, tracked_creators!inner(client_id, handle, brand)")
+    .select("id, url, description, thumbnail, views, tracked_creators!inner(client_id, handle, brand, platform)")
     .eq("id", videoId)
     .single();
   if (videoError || !video) return NextResponse.json({ error: "That alert no longer exists" }, { status: 404 });
@@ -111,39 +131,87 @@ export async function POST(req: NextRequest) {
     .maybeSingle();
   if (existing) return NextResponse.json({ sop: existing, alreadyExisted: true });
 
-  // Reuse an existing breakdown of this exact video if one exists anywhere in
-  // the org — re-analysing costs a SocialKit request and an AI credit for a
-  // result we already have.
+  const platform = detectPlatform(video.url) || creator.platform || "instagram";
+
+  // Prefer a transcript already fetched for this exact video — SocialKit's
+  // free tier is 20 requests a month, and re-fetching one we already have
+  // spends a request for nothing.
   const { data: cached } = await admin
     .from("calendar_entries")
-    .select("title, reference_transcript, reference_framework")
+    .select("reference_transcript")
     .eq("reference_link", video.url)
-    .not("reference_framework", "is", null)
+    .not("reference_transcript", "is", null)
     .limit(1)
     .maybeSingle();
 
-  let breakdown = cached?.reference_framework as any;
-  let title = cached?.title as string | undefined;
-
-  if (!breakdown) {
-    // No cached analysis — run the same route the Breakdown tab uses, so the
-    // prompt can never drift between the two.
-    const res = await fetch(new URL("/api/claude/analyze-reference", req.nextUrl.origin), {
-      method: "POST",
-      headers: { "Content-Type": "application/json", cookie: req.headers.get("cookie") || "" },
-      body: JSON.stringify({ clientId, referenceUrl: video.url }),
-    });
-    const json = await res.json();
-    if (!res.ok) return NextResponse.json({ error: json.error || "Couldn't break that video down" }, { status: 502 });
-    breakdown = json.framework;
-    title = json.title;
+  let transcript = (cached?.reference_transcript || "").trim();
+  if (!transcript) {
+    const key = await getSocialkitKey(clientId);
+    if (!key) {
+      return NextResponse.json(
+        { error: "That client hasn't connected SocialKit — connect it under Integrations to pull transcripts." },
+        { status: 400 }
+      );
+    }
+    try {
+      transcript = await fetchTranscript(platform as "tiktok" | "instagram", video.url, key);
+    } catch (err: any) {
+      return NextResponse.json({ error: err.message || "Couldn't fetch that video's transcript" }, { status: 502 });
+    }
+  }
+  if (!transcript) {
+    return NextResponse.json(
+      { error: "That video has no spoken audio to work from — Format SOPs need a talking-style video" },
+      { status: 422 }
+    );
   }
 
-  if (!breakdown?.parts?.length) {
-    return NextResponse.json({ error: "The breakdown came back empty — try again" }, { status: 502 });
+  const prompt = `You're writing a FORMAT SOP: an editing spec a video editor follows to reproduce a proven short-form format. The reader is an editor, not a scriptwriter — they need to know how to cut, caption and assemble the video, not how to write one.
+
+Here is the reference video's full transcript:
+"""
+${transcript}
+"""
+
+Caption on the post: ${JSON.stringify(video.description || "")}
+Creator: @${creator.handle}
+Platform: ${platform}${niche ? `\nNiche: ${niche}` : ""}
+
+IMPORTANT: you cannot see the video, only hear it. Infer the visual treatment from what is being said, how it is paced, and what the caption implies. Where a call genuinely cannot be made from audio alone, write the instruction so the editor checks it against the reference (for example "match the caption font used in the reference") rather than inventing a specific font, colour or asset that might be wrong. Never name a specific brand, font file, cloud folder or asset library that was not mentioned — say "the approved library" instead.
+
+Produce:
+- contentFormat: a short label for the format itself, the way an editor would name it — for example "Green Screen / Image Overlay Talking Head", "Static Talking Head + B-roll Cutaways", "POV Skit with Text Overlay". 3-7 words.
+- title: a short name for this SOP (under 60 characters) — name the FORMAT, not this video's specific story, since other creators will rebuild it with their own content.
+- prep: 3-5 things to do before opening the editor — watch the reference, gather assets, note the structure.
+- hook: 4-7 instructions for building the opening 3 seconds specifically — what is on screen, how the title text is sized and styled relative to captions, how long it holds, when the first cut lands.
+- editing: 5-8 instructions for the main edit pass — clip order, cutting pauses, caption style and word count on screen, when to change visuals, speaker sizing and framing, audio and colour consistency.
+- alwaysDo: 8-12 short rules, one line each. Non-negotiables that make an edit match this format.
+- avoid: 6-10 short "Don't ..." lines. Concrete mistakes that break this format specifically, not generic editing advice.
+- resources: 2-4 lines naming what the editor needs and the review workflow — where assets come from, what to compare the edit against, who reviews before it goes to the client. Do not invent URLs.
+
+Write every bullet as an imperative instruction. Keep each under 25 words.
+
+Respond with ONLY valid JSON, no markdown fences, no preamble:
+{"contentFormat":"...","title":"...","prep":["..."],"hook":["..."],"editing":["..."],"alwaysDo":["..."],"avoid":["..."],"resources":["..."]}`;
+
+  const message = await anthropic.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 2500,
+    messages: [{ role: "user", content: prompt }],
+  });
+  const raw = message.content.filter((b) => b.type === "text").map((b) => (b as any).text).join("\n").trim();
+
+  let spec: FormatSpec;
+  try {
+    spec = JSON.parse(raw.replace(/```json|```/g, "").trim());
+  } catch {
+    return NextResponse.json({ error: "Claude returned malformed JSON — try again" }, { status: 502 });
+  }
+  if (bullets(spec.alwaysDo).length === 0 && bullets(spec.editing).length === 0) {
+    return NextResponse.json({ error: "The format spec came back empty — try again" }, { status: 502 });
   }
 
-  const sopTitle = (title || video.description || `@${creator.handle} format`).slice(0, 120);
+  const sopTitle = (spec.title || spec.contentFormat || `@${creator.handle} format`).slice(0, 120);
 
   const { data: sop, error: sopError } = await admin
     .from("sops")
@@ -151,7 +219,7 @@ export async function POST(req: NextRequest) {
       organization_id: profile.organization_id,
       kind: "format",
       title: sopTitle,
-      body: breakdownToSopBody(breakdown, video.url, creator.handle || "creator", niche),
+      body: specToSopBody(spec, video.url, creator.handle || "creator", niche, platform),
       author_name: profile.name,
       author_role: profile.role,
       thumbnail_url: video.thumbnail,

@@ -11,7 +11,7 @@
 // as plain text those come out as literal "##" and "**" noise.
 //
 // Deliberately hand-rolled rather than pulling in a markdown library: this
-// covers the four constructs actually produced (heading, bullet, bold,
+// covers the constructs actually produced (heading, bullet, bold, italic,
 // link) and builds React elements directly, so there's no
 // dangerouslySetInnerHTML and no HTML-injection surface from SOP text that
 // any team member can edit.
@@ -19,7 +19,7 @@
 import React from "react";
 import { C } from "@/lib/theme";
 
-const BOLD_OR_LINK = /(\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/g;
+const INLINE = /(\*\*[^*]+\*\*|_[^_]+_|\[[^\]]+\]\([^)]+\))/g;
 
 // Only http(s) links are turned into anchors — a javascript: or data: URL
 // typed into an SOP stays inert text.
@@ -28,10 +28,13 @@ function isSafeHref(url: string): boolean {
 }
 
 function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
-  return text.split(BOLD_OR_LINK).filter(Boolean).map((part, i) => {
+  return text.split(INLINE).filter(Boolean).map((part, i) => {
     const key = `${keyPrefix}-${i}`;
     if (part.startsWith("**") && part.endsWith("**")) {
       return <strong key={key} style={{ color: C.text, fontWeight: 600 }}>{part.slice(2, -2)}</strong>;
+    }
+    if (part.length > 2 && part.startsWith("_") && part.endsWith("_")) {
+      return <em key={key} style={{ fontStyle: "italic" }}>{part.slice(1, -1)}</em>;
     }
     const link = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
     if (link && isSafeHref(link[2])) {
