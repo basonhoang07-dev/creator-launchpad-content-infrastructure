@@ -51,16 +51,21 @@ export async function fetchTranscriptDetailed(
   const res = await fetch(endpoint);
   const json = await res.json().catch(() => ({}));
 
-  // A rejected key looks nothing like a bad video link to the user — call it
-  // out explicitly instead of letting it read as "this video won't work."
+  // SocialKit returns 403 for BOTH a bad key and an exhausted monthly quota,
+  // and the two need completely different actions — reconnecting a perfectly
+  // good key does nothing when what actually happened is you ran out for the
+  // month. The message body is the only thing that distinguishes them.
+  const message = String(json?.message || json?.error || "");
+  const quotaExhausted = /limit exceeded|quota|upgrade/i.test(message) || !!json?.upgradeUrl;
+
+  if (res.status === 429 || ((res.status === 401 || res.status === 403) && quotaExhausted)) {
+    throw new Error("You've used up this month's SocialKit transcripts on the free plan — it resets at the start of next month.");
+  }
   if (res.status === 401 || res.status === 403) {
     throw new Error("SocialKit rejected that API key — reconnect it under Integrations.");
   }
-  if (res.status === 429) {
-    throw new Error("You've used up this month's SocialKit breakdowns (free tier is 20/month) — it resets next month.");
-  }
   if (!res.ok || !json.success) {
-    throw new Error(json?.error || `Couldn't fetch that ${platform === "tiktok" ? "TikTok" : "Instagram"} video's transcript — check the link is public`);
+    throw new Error(message || `Couldn't fetch that ${platform === "tiktok" ? "TikTok" : "Instagram"} video's transcript — check the link is public`);
   }
 
   const rawSegments: any[] = Array.isArray(json.data?.transcriptSegments) ? json.data.transcriptSegments : [];

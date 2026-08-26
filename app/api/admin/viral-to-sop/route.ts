@@ -274,10 +274,15 @@ STEP 1 — WORK OUT WHO IS TALKING BEFORE ANYTHING ELSE.
 The transcript has NO speaker labels. Many of these videos are conversations — two people on a call, an interview, a parent and child, a skit with two characters — and the whole thing reads like a monologue if you don't check. Use second-person address ("guess how much WE made", "I'm proud of YOU"), questions answered by the next line, changes in point of view, and the pause markers to work out the turns. A line where someone is praised, questioned, or given advice was almost certainly said BY THE OTHER PERSON, not by the creator.
 Getting this wrong is the single worst failure here: it produces an SOP telling the creator to perform lines somebody else said. If it is genuinely ambiguous, say so in castNote rather than guessing.
 
+THEN decide which speaker is the account holder, and be careful — this is easy to get backwards. People post their OWN good news, not someone else's. The account holder is almost always the person the video FLATTERS: the one reporting the win, hitting the milestone, being praised, congratulated, or asked about their success. The person doing the praising, advising or interviewing is usually the guest, however much they talk. A video is rarely posted by the person handing out the compliments.
+Cross-check two things before you commit:
+1. The caption is written from the account holder's point of view — see whose experience it describes.
+2. Your own answer must be internally consistent. Every line you attribute to the creator has to make sense coming from the same person your "whoTheyAre" describes. If you write that the creator is on a beach, the line "I'm sitting on a beach" must be theirs. Re-read your attribution and fix it before answering.
+
 STEP 2 — you cannot see the video, only hear it. Infer the visual treatment from what is being said, how it is paced, and what the caption implies. Where a call genuinely cannot be made from audio alone, write the instruction so the editor checks it against the reference (for example "match the caption font used in the reference") rather than inventing a specific font, colour or asset that might be wrong. Never name a specific brand, font file, cloud folder or asset library that was not mentioned — say "the approved library" instead.
 
 Produce:
-- cast: array of everyone who speaks. Each has "role" (a short label used everywhere else in the document — "Creator", "Dad", "Interviewer", "Friend on the call"), "whoTheyAre" (one line on their relationship to the creator and what they contribute), and "isCreator" (true for exactly one — the person whose account posted this, or the person the video is about if they never speak). If it is genuinely one person, return a single entry.
+- cast: array of everyone who speaks. Each has "role" (a SHORT label of one to three words, used as a name everywhere else in the document — "Creator", "Dad", "Interviewer", "Friend on the call". Never a description or a sentence; the detail belongs in whoTheyAre), "whoTheyAre" (one line on their relationship to the creator and what they contribute), and "isCreator" (true for exactly one — the person whose account posted this, or the person the video is about if they never speak). If it is genuinely one person, return a single entry.
 - castNote: one or two sentences on what a client needs in order to rebuild this — especially if the format REQUIRES a second real person ("this only works with a genuine call from someone who actually knows you; casting a stand-in reads as fake instantly"). null for a straightforward solo piece.
 - whyItWorks: an object explaining the mechanism. Be specific to this video, never generic:
   - visual: what the viewer SEES that stops the scroll and keeps them there — the setting, the contrast between setting and subject, what the frame implies about the person's life.
@@ -317,9 +322,16 @@ Respond with ONLY valid JSON, no markdown fences, no preamble:
     .finalMessage();
   const raw = message.content.filter((b) => b.type === "text").map((b) => (b as any).text).join("\n").trim();
 
+  // The prompt asks for bare JSON, but it also asks for a chunk of reasoning
+  // about who is speaking first — and a model that has just been told to
+  // reason will sometimes show that work above the object. Slicing to the
+  // outermost braces tolerates a preamble (and stray fences) instead of
+  // throwing away a perfectly good spec.
   let spec: FormatSpec;
+  const cleaned = raw.replace(/```json|```/g, "").trim();
+  const jsonText = cleaned.slice(cleaned.indexOf("{"), cleaned.lastIndexOf("}") + 1);
   try {
-    spec = JSON.parse(raw.replace(/```json|```/g, "").trim());
+    spec = JSON.parse(jsonText);
   } catch {
     return NextResponse.json({ error: "Claude returned malformed JSON — try again" }, { status: 502 });
   }
