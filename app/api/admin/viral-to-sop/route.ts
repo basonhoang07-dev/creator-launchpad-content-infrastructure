@@ -174,7 +174,7 @@ export async function POST(req: NextRequest) {
 
   const { data: video, error: videoError } = await admin
     .from("tracked_creator_videos")
-    .select("id, url, description, thumbnail, views, tracked_creators!inner(client_id, handle, brand, platform)")
+    .select("id, url, description, thumbnail, views, transcript, transcript_segments, tracked_creators!inner(client_id, handle, brand, platform)")
     .eq("id", videoId)
     .single();
   if (videoError || !video) return NextResponse.json({ error: "That alert no longer exists" }, { status: 404 });
@@ -208,26 +208,36 @@ export async function POST(req: NextRequest) {
 
   const platform = detectPlatform(video.url) || creator.platform || "instagram";
 
-  // Always fetched fresh rather than reusing a cached flat transcript: the
-  // timed segments are what make speaker turns inferable, and the cached
-  // column only ever held the blob. One SocialKit request against the
-  // client's monthly 20 is the price of not mis-attributing a dialogue.
-  const key = await getSocialkitKey(clientId);
-  if (!key) {
-    return NextResponse.json(
-      { error: "That client hasn't connected SocialKit — connect it under Integrations to pull transcripts." },
-      { status: 400 }
-    );
-  }
+  // Cached on the video row, timings included. calendar_entries only ever
+  // held the flat blob, which is useless here — speaker turns are inferred
+  // from the pauses — so a cache that keeps the segments is what stops
+  // every re-promotion spending another SocialKit request.
+  let transcript = ((video as any).transcript || "").trim();
+  let segments: TranscriptSegment[] = Array.isArray((video as any).transcript_segments)
+    ? (video as any).transcript_segments
+    : [];
 
-  let transcript = "";
-  let segments: TranscriptSegment[] = [];
-  try {
-    const result = await fetchTranscriptDetailed(platform as "tiktok" | "instagram", video.url, key);
-    transcript = result.transcript;
-    segments = result.segments;
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || "Couldn't fetch that video's transcript" }, { status: 502 });
+  if (!transcript || segments.length === 0) {
+    const key = await getSocialkitKey(clientId);
+    if (!key) {
+      return NextResponse.json(
+        { error: "That client hasn't connected SocialKit — connect it under Integrations to pull transcripts." },
+        { status: 400 }
+      );
+    }
+    try {
+      const result = await fetchTranscriptDetailed(platform as "tiktok" | "instagram", video.url, key);
+      transcript = result.transcript;
+      segments = result.segments;
+    } catch (err: any) {
+      return NextResponse.json({ error: err.message || "Couldn't fetch that video's transcript" }, { status: 502 });
+    }
+    // Best-effort — a failed cache write costs a request next time, not the
+    // SOP being generated now.
+    await admin
+      .from("tracked_creator_videos")
+      .update({ transcript, transcript_segments: segments })
+      .eq("id", video.id);
   }
   if (!transcript) {
     return NextResponse.json(
