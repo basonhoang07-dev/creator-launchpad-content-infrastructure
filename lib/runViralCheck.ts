@@ -52,14 +52,17 @@ export async function runViralCheckForClient(
   // it; anything not covered (TikTok, or Apify not configured) still falls
   // through to the original per-creator path untouched.
   let apifyBatch: Map<string, SocialkitVideo[]> | null = null;
+  let apifyErrors: Map<string, string> = new Map();
   const igCreators = creators.filter((c) => c.platform === "instagram" && c.handle);
   if (isApifyConfigured() && igCreators.length > 0) {
     try {
-      apifyBatch = await fetchCreatorVideosBatch(
+      const batch = await fetchCreatorVideosBatch(
         igCreators.map((c) => ({ handle: c.handle!, profileUrl: c.profile_url })),
         process.env.APIFY_API_TOKEN!,
         MAX_VIDEO_AGE_DAYS
       );
+      apifyBatch = batch.byHandle;
+      apifyErrors = batch.errors;
     } catch (err: any) {
       // A failed batch must not take the whole run down — record it once and
       // let each creator fall back to the per-creator source below.
@@ -68,13 +71,21 @@ export async function runViralCheckForClient(
   }
 
   for (const creator of creators) {
+    const key = (creator.handle || "").toLowerCase().replace(/^@/, "");
     try {
-      const batched = apifyBatch?.get((creator.handle || "").toLowerCase().replace(/^@/, ""));
+      // A profile Instagram refuses to serve won't come back from SocialKit
+      // either, so don't spend one of the client's 20 monthly requests
+      // proving it — record the reason and move on.
+      const blocked = apifyErrors.get(key);
+      if (blocked) throw new Error(`Instagram won't serve this profile (${blocked}) — it's private or restricted.`);
+
+      const batched = apifyBatch?.get(key);
       const videos = batched && batched.length > 0
         ? batched
         : await fetchCreatorVideos(creator.platform, creator.profile_url, accessKey);
       const hits = await reconcileCreatorVideos(supabase, creator.id, creator.viral_threshold, videos);
       result.checked++;
+      await setCreatorError(supabase, creator.id, null);
       hits.forEach((h) =>
         result.hits.push({ ...h, creatorHandle: creator.handle || creator.profile_url, brand: creator.brand, platform: creator.platform })
       );
@@ -83,7 +94,12 @@ export async function runViralCheckForClient(
       // abort the rest of the run — collect and keep going. A rejected key
       // or exhausted quota will surface identically for every creator, so
       // the caller still sees it clearly.
-      result.errors.push(`@${creator.handle || creator.profile_url}: ${err.message || "check failed"}`);
+      const message = err.message || "check failed";
+      result.errors.push(`@${creator.handle || creator.profile_url}: ${message}`);
+      // Persisted as well as returned: the banner disappears on the next
+      // render, but a creator that can never be read needs to say so every
+      // time the panel is opened, not just once.
+      await setCreatorError(supabase, creator.id, message);
     }
   }
 
@@ -92,6 +108,16 @@ export async function runViralCheckForClient(
   }
 
   return result;
+}
+
+// Never allowed to fail the run: this is diagnostic detail about a check,
+// not part of the check itself.
+async function setCreatorError(supabase: SupabaseClient, creatorId: string, message: string | null) {
+  try {
+    await supabase.from("tracked_creators").update({ last_error: message }).eq("id", creatorId);
+  } catch {
+    /* ignore */
+  }
 }
 
 // Best-effort, exactly like recap delivery: the alert is already recorded in

@@ -14,6 +14,10 @@ export interface TrackedCreator {
   handle: string;
   viralThreshold: number;
   lastCheckedAt: string | null;
+  // Why the last check produced nothing, when it produced nothing. A
+  // restricted Instagram profile never resolves, so this has to persist
+  // rather than living in a banner that vanishes on re-render.
+  lastError: string | null;
 }
 
 export interface ViralAlertVideo {
@@ -33,7 +37,7 @@ export interface ViralAlertVideo {
 export async function fetchTrackedCreators(supabase: SupabaseClient, clientId: string): Promise<TrackedCreator[]> {
   const { data } = await supabase
     .from("tracked_creators")
-    .select("id, brand, platform, profile_url, handle, viral_threshold, last_checked_at")
+    .select("id, brand, platform, profile_url, handle, viral_threshold, last_checked_at, last_error")
     .eq("client_id", clientId)
     .order("created_at", { ascending: true });
 
@@ -45,6 +49,7 @@ export async function fetchTrackedCreators(supabase: SupabaseClient, clientId: s
     handle: r.handle || r.profile_url,
     viralThreshold: Number(r.viral_threshold) || 10000,
     lastCheckedAt: r.last_checked_at,
+    lastError: r.last_error ?? null,
   }));
 }
 

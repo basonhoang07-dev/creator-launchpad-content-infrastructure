@@ -363,18 +363,27 @@ export default function ViralAlertsPanel({ clientId, activeBrand }: { clientId: 
 
         <div style={{ display: "grid", gap: 8 }}>
           {creators.map((c) => (
-            <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, background: C.surface2, borderRadius: 10, padding: "10px 12px" }}>
-              <Badge tone="accent">{c.platform === "tiktok" ? "TikTok" : "Instagram"}</Badge>
-              <a href={c.profileUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, fontWeight: 600, color: C.text, textDecoration: "none", flex: 1, minWidth: 0 }}>
-                @{c.handle}
-              </a>
-              {c.brand && <span style={{ fontSize: 11, color: C.textFaint }}>{c.brand}</span>}
-              <span className="cl-mono" style={{ fontSize: 10.5, color: C.textFaint }}>
-                {formatVelocity(c.viralThreshold)}/24h · checked {relativeTime(c.lastCheckedAt)}
-              </span>
-              <button onClick={() => removeCreator(c.id)} title="Stop tracking" style={{ background: "none", border: "none", color: C.textFaint, cursor: "pointer" }}>
-                <Trash2 size={13} />
-              </button>
+            <div key={c.id} style={{ background: C.surface2, borderRadius: 10, padding: "10px 12px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <Badge tone="accent">{c.platform === "tiktok" ? "TikTok" : "Instagram"}</Badge>
+                <a href={c.profileUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, fontWeight: 600, color: C.text, textDecoration: "none", flex: 1, minWidth: 0 }}>
+                  @{c.handle}
+                </a>
+                {c.brand && <span style={{ fontSize: 11, color: C.textFaint }}>{c.brand}</span>}
+                <span className="cl-mono" style={{ fontSize: 10.5, color: C.textFaint }}>
+                  {formatVelocity(c.viralThreshold)}/24h · checked {relativeTime(c.lastCheckedAt)}
+                </span>
+                <button onClick={() => removeCreator(c.id)} title="Stop tracking" style={{ background: "none", border: "none", color: C.textFaint, cursor: "pointer" }}>
+                  <Trash2 size={13} />
+                </button>
+              </div>
+              {/* A creator whose profile can't be read would otherwise sit
+                  here reading "checked never" with no explanation. */}
+              {c.lastError && (
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 11, color: C.warning, marginTop: 7, lineHeight: 1.5 }}>
+                  <AlertCircle size={11} style={{ flexShrink: 0, marginTop: 2 }} /> {c.lastError}
+                </div>
+              )}
             </div>
           ))}
           {creators.length === 0 && <EmptyState icon={TrendingUp} text="No creators tracked yet — add one below." />}

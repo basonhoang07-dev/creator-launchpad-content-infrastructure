@@ -71,6 +71,22 @@ export function normalizeApifyReels(raw: any[]): { owner: string | null; video: 
     .filter((x): x is { owner: string | null; video: SocialkitVideo } => x !== null);
 }
 
+export interface ApifyBatchResult {
+  byHandle: Map<string, SocialkitVideo[]>;
+  // Per-handle reasons Apify couldn't read a profile at all, e.g. Instagram
+  // restricting it. Separate from an empty video list, which just means the
+  // creator hasn't posted inside the window.
+  errors: Map<string, string>;
+}
+
+// Apify reports an unreadable profile as an item carrying `error` and the
+// profile URL instead of reel fields, so the handle has to be recovered
+// from the URL — there's no ownerUsername on those.
+function handleFromUrl(url: unknown): string | null {
+  const m = typeof url === "string" ? url.match(/instagram\.com\/([^/?#]+)/i) : null;
+  return m ? m[1].toLowerCase().replace(/^@/, "") : null;
+}
+
 // One call for every tracked creator. Returns a per-handle map so the
 // caller can reconcile each creator's videos independently, exactly as it
 // does with the one-request-per-creator path.
@@ -78,7 +94,7 @@ export async function fetchCreatorVideosBatch(
   creators: ApifyCreatorRequest[],
   token: string,
   maxAgeDays: number
-): Promise<Map<string, SocialkitVideo[]>> {
+): Promise<ApifyBatchResult> {
   const handles = creators.map((c) => c.handle.replace(/^@/, ""));
   const endpoint = `https://api.apify.com/v2/acts/${ACTOR}/run-sync-get-dataset-items?token=${encodeURIComponent(token)}&timeout=${RUN_TIMEOUT_SECONDS}`;
 
@@ -104,9 +120,16 @@ export async function fetchCreatorVideosBatch(
     throw new Error(`Apify run failed (${res.status}) — ${text.slice(0, 140)}`);
   }
 
-  const items = await res.json().catch(() => []);
+  const items: any[] = await res.json().catch(() => []);
   const byHandle = new Map<string, SocialkitVideo[]>();
+  const errors = new Map<string, string>();
   handles.forEach((h) => byHandle.set(h.toLowerCase(), []));
+
+  for (const item of items) {
+    if (!item?.error) continue;
+    const handle = handleFromUrl(item.url) || handleFromUrl(item.inputUrl);
+    if (handle && byHandle.has(handle)) errors.set(handle, String(item.error));
+  }
 
   for (const { owner, video } of normalizeApifyReels(items)) {
     // An item whose owner doesn't match anything we asked for is not
@@ -116,7 +139,7 @@ export async function fetchCreatorVideosBatch(
     byHandle.get(owner)!.push(video);
   }
 
-  return byHandle;
+  return { byHandle, errors };
 }
 
 export function isApifyConfigured(): boolean {
