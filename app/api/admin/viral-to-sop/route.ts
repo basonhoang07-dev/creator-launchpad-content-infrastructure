@@ -24,7 +24,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentProfile } from "@/lib/supabase/server";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
-import { detectPlatform, getSocialkitKey, fetchTranscript } from "@/lib/socialkit";
+import { detectPlatform, getSocialkitKey, fetchTranscriptDetailed, type TranscriptSegment } from "@/lib/socialkit";
 import { isAnthropicConfigured, ANTHROPIC_NOT_CONFIGURED_MESSAGE } from "@/lib/anthropicStatus";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -36,14 +36,34 @@ export const maxDuration = 60;
 interface FormatSpec {
   contentFormat?: string;
   title?: string;
-  prep?: string[];
+
+  // Who is actually speaking. A transcript arrives as one undifferentiated
+  // block, so a two-person call reads identically to a monologue — which is
+  // how delivery notes end up telling the creator to perform lines the
+  // other person said. Everything downstream is attributed off this.
+  cast?: { role?: string; whoTheyAre?: string; isCreator?: boolean }[];
+  castNote?: string | null;
+
+  // Why it actually took off. The point of harvesting a format is
+  // understanding the mechanism, not copying the surface — and `immutable`
+  // is the load-bearing one: the parts that only worked because of who this
+  // creator is, which a client borrowing the format cannot reproduce.
+  whyItWorks?: {
+    visual?: string;
+    verbal?: string;
+    emotional?: string;
+    immutable?: string;
+    curiosityLoop?: string;
+  };
+
   // On-camera direction for whoever films it. Separate from the editing
   // steps because it's read before the shoot by a different person — an
   // editor can't fix the wrong outfit or the wrong energy after the fact.
+  prep?: string[];
   wardrobe?: string | null;
   setting?: string | null;
   energy?: string | null;
-  tonality?: { section?: string; direction?: string }[];
+  tonality?: { speaker?: string; section?: string; direction?: string }[];
   hook?: string[];
   editing?: string[];
   alwaysDo?: string[];
@@ -75,6 +95,32 @@ function specToSopBody(spec: FormatSpec, sourceUrl: string, handle: string, nich
   out.push("_The visual and editing calls below are inferred from the reference's audio and pacing. Watch the reference video and confirm them before briefing an editor._");
   out.push("");
 
+  // Leads the document: whether this format is worth rebuilding at all, and
+  // which parts of it are borrowable, is the question to answer before any
+  // of the how-to matters.
+  const w = spec.whyItWorks || {};
+  if (w.visual || w.verbal || w.emotional || w.immutable || w.curiosityLoop) {
+    out.push("## Why this went viral", "");
+    if (w.visual) out.push(`**Visual:** ${w.visual}`, "");
+    if (w.verbal) out.push(`**Verbal:** ${w.verbal}`, "");
+    if (w.emotional) out.push(`**Emotional:** ${w.emotional}`, "");
+    if (w.curiosityLoop) out.push(`**Curiosity loop:** ${w.curiosityLoop}`, "");
+    if (w.immutable) {
+      out.push(`**Immutable — what you can't borrow:** ${w.immutable}`, "");
+      out.push("_Rebuild the mechanism around something equally true for you. Borrowing a claim you haven't earned is what makes a copy of this format read as fake._", "");
+    }
+  }
+
+  const cast = (spec.cast || []).filter((c) => c?.role);
+  if (cast.length > 1 || spec.castNote) {
+    out.push("## Who's on camera", "");
+    cast.forEach((c) =>
+      out.push(`- **${c.role}**${c.isCreator ? " (the creator — this is the account holder)" : ""}${c.whoTheyAre ? ` — ${c.whoTheyAre}` : ""}`)
+    );
+    if (cast.length > 0) out.push("");
+    if (spec.castNote) out.push(spec.castNote, "");
+  }
+
   section("Prep", bullets(spec.prep));
 
   // Deliberately unnumbered so the Step 1-5 editing sequence keeps the
@@ -87,8 +133,13 @@ function specToSopBody(spec: FormatSpec, sourceUrl: string, handle: string, nich
     if (spec.setting) out.push(`**Setting & background:** ${spec.setting}`, "");
     if (spec.energy) out.push(`**Overall energy:** ${spec.energy}`, "");
     if (tonality.length > 0) {
-      out.push("**How to say each part:**", "");
-      tonality.forEach((t) => out.push(`- **${t.section}:** ${t.direction}`));
+      out.push("**How each line should land:**", "");
+      // The speaker is named per line rather than assumed, so a two-hander
+      // can't be read as one person performing both halves of a
+      // conversation.
+      tonality.forEach((t) =>
+        out.push(`- ${t.speaker ? `**[${t.speaker}]** ` : ""}**${t.section}:** ${t.direction}`)
+      );
       out.push("");
     }
   }
@@ -157,31 +208,26 @@ export async function POST(req: NextRequest) {
 
   const platform = detectPlatform(video.url) || creator.platform || "instagram";
 
-  // Prefer a transcript already fetched for this exact video — SocialKit's
-  // free tier is 20 requests a month, and re-fetching one we already have
-  // spends a request for nothing.
-  const { data: cached } = await admin
-    .from("calendar_entries")
-    .select("reference_transcript")
-    .eq("reference_link", video.url)
-    .not("reference_transcript", "is", null)
-    .limit(1)
-    .maybeSingle();
+  // Always fetched fresh rather than reusing a cached flat transcript: the
+  // timed segments are what make speaker turns inferable, and the cached
+  // column only ever held the blob. One SocialKit request against the
+  // client's monthly 20 is the price of not mis-attributing a dialogue.
+  const key = await getSocialkitKey(clientId);
+  if (!key) {
+    return NextResponse.json(
+      { error: "That client hasn't connected SocialKit — connect it under Integrations to pull transcripts." },
+      { status: 400 }
+    );
+  }
 
-  let transcript = (cached?.reference_transcript || "").trim();
-  if (!transcript) {
-    const key = await getSocialkitKey(clientId);
-    if (!key) {
-      return NextResponse.json(
-        { error: "That client hasn't connected SocialKit — connect it under Integrations to pull transcripts." },
-        { status: 400 }
-      );
-    }
-    try {
-      transcript = await fetchTranscript(platform as "tiktok" | "instagram", video.url, key);
-    } catch (err: any) {
-      return NextResponse.json({ error: err.message || "Couldn't fetch that video's transcript" }, { status: 502 });
-    }
+  let transcript = "";
+  let segments: TranscriptSegment[] = [];
+  try {
+    const result = await fetchTranscriptDetailed(platform as "tiktok" | "instagram", video.url, key);
+    transcript = result.transcript;
+    segments = result.segments;
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message || "Couldn't fetch that video's transcript" }, { status: 502 });
   }
   if (!transcript) {
     return NextResponse.json(
@@ -190,43 +236,75 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Timestamped lines, with the gap since the previous line marked. A pause
+  // is the strongest available signal of a speaker change when there's no
+  // diarization, and the timestamps double as something the editor can cue
+  // against.
+  const timedScript = segments.length
+    ? segments
+        .map((s, i) => {
+          const gap = i === 0 ? 0 : s.start - segments[i - 1].start;
+          return `[${s.timestamp}]${gap >= 1 ? " (pause)" : ""} ${s.text}`;
+        })
+        .join("\n")
+    : transcript;
+
   const prompt = `You're writing a FORMAT SOP for a proven short-form video format. It has two readers: the CREATOR, who films it and needs to know how to look, where to shoot, and how to deliver each line — and the EDITOR, who cuts and captions it. Neither needs to be told how to write a script.
 
-Here is the reference video's full transcript:
+Here is the reference video's transcript, one line per caption segment, with its timestamp. "(pause)" marks a gap of a second or more before that line:
 """
-${transcript}
+${timedScript}
 """
 
 Caption on the post: ${JSON.stringify(video.description || "")}
-Creator: @${creator.handle}
+Account that posted it: @${creator.handle}
 Platform: ${platform}${niche ? `\nNiche: ${niche}` : ""}
 
-IMPORTANT: you cannot see the video, only hear it. Infer the visual treatment from what is being said, how it is paced, and what the caption implies. Where a call genuinely cannot be made from audio alone, write the instruction so the editor checks it against the reference (for example "match the caption font used in the reference") rather than inventing a specific font, colour or asset that might be wrong. Never name a specific brand, font file, cloud folder or asset library that was not mentioned — say "the approved library" instead.
+STEP 1 — WORK OUT WHO IS TALKING BEFORE ANYTHING ELSE.
+The transcript has NO speaker labels. Many of these videos are conversations — two people on a call, an interview, a parent and child, a skit with two characters — and the whole thing reads like a monologue if you don't check. Use second-person address ("guess how much WE made", "I'm proud of YOU"), questions answered by the next line, changes in point of view, and the pause markers to work out the turns. A line where someone is praised, questioned, or given advice was almost certainly said BY THE OTHER PERSON, not by the creator.
+Getting this wrong is the single worst failure here: it produces an SOP telling the creator to perform lines somebody else said. If it is genuinely ambiguous, say so in castNote rather than guessing.
+
+STEP 2 — you cannot see the video, only hear it. Infer the visual treatment from what is being said, how it is paced, and what the caption implies. Where a call genuinely cannot be made from audio alone, write the instruction so the editor checks it against the reference (for example "match the caption font used in the reference") rather than inventing a specific font, colour or asset that might be wrong. Never name a specific brand, font file, cloud folder or asset library that was not mentioned — say "the approved library" instead.
 
 Produce:
-- contentFormat: a short label for the format itself, the way an editor would name it — for example "Green Screen / Image Overlay Talking Head", "Static Talking Head + B-roll Cutaways", "POV Skit with Text Overlay". 3-7 words.
+- cast: array of everyone who speaks. Each has "role" (a short label used everywhere else in the document — "Creator", "Dad", "Interviewer", "Friend on the call"), "whoTheyAre" (one line on their relationship to the creator and what they contribute), and "isCreator" (true for exactly one — the person whose account posted this, or the person the video is about if they never speak). If it is genuinely one person, return a single entry.
+- castNote: one or two sentences on what a client needs in order to rebuild this — especially if the format REQUIRES a second real person ("this only works with a genuine call from someone who actually knows you; casting a stand-in reads as fake instantly"). null for a straightforward solo piece.
+- whyItWorks: an object explaining the mechanism. Be specific to this video, never generic:
+  - visual: what the viewer SEES that stops the scroll and keeps them there — the setting, the contrast between setting and subject, what the frame implies about the person's life.
+  - verbal: what is said and how it is constructed — word choice, specificity, the shape of the sentences, what is stated versus implied.
+  - emotional: what the viewer FEELS and why that makes them stay, save or send it. Name the emotion plainly (envy, pride, relief, vindication, tenderness, aspiration).
+  - curiosityLoop: the open loop — what question the opening plants, how long it is held before the payoff, and whether a second loop opens before the first closes. Quote the line that opens it and the line that closes it.
+  - immutable: THE MOST IMPORTANT FIELD. What worked here ONLY because of who this specific creator is, and cannot be borrowed by anyone else — their actual revenue number, their age relative to that number, the real relationship on the call, credentials or a track record they have and the viewer doesn't. Be blunt and specific ("a 19-year-old saying 88K lands because of the age-to-number gap; a 35-year-old saying the same number is unremarkable"). Then say what a different creator should put in that slot instead — the equivalent true thing for them.
+- contentFormat: a short label for the format itself, the way an editor would name it — for example "Green Screen / Image Overlay Talking Head", "Two-Hander Phone Call", "Static Talking Head + B-roll Cutaways". 3-7 words.
 - title: a short name for this SOP (under 60 characters) — name the FORMAT, not this video's specific story, since other creators will rebuild it with their own content.
-- prep: 3-5 things to do before opening the editor — watch the reference, gather assets, note the structure.
-- wardrobe: what the creator should WEAR for this format and why it fits the message — be specific about the register (loose vacation fit vs. clean fitted basics vs. gym clothes), and say what to avoid. 1-3 sentences. null only if genuinely nothing about the outfit matters.
+- prep: 3-5 things to do before filming or opening the editor. If the format needs a second person, say so here first.
+- wardrobe: what THE CREATOR (the isCreator person) should WEAR for this format and why it fits the message — be specific about the register (loose vacation fit vs. clean fitted basics vs. gym clothes), and say what to avoid. 1-3 sentences. null only if genuinely nothing about the outfit matters.
 - setting: where to shoot it and what the background should signal — the vibe it needs to give off (quiet and expensive, lived-in and real, busy and public, outdoors and free), plus framing and lighting. Say what would break the illusion. 1-3 sentences.
 - energy: the overall energy the creator should carry through the whole video in one or two sentences — is this calm and understated, hyped and fast, conspiratorial and quiet, warm and vulnerable? Name it plainly.
-- tonality: an array of per-beat delivery directions covering the whole video in order. Each has "section" (the beat, e.g. "Hook", "The reveal", or a short quote of the line) and "direction" (how to actually say it — name the emotional register plainly: sad, excited, deadpan, urgent, calm, amused, conspiratorial; plus pace: slow, fast, normal; plus where to pause or punch a word). 4-6 entries.
+- tonality: an array of per-beat delivery directions covering the whole video in order. Each has "speaker" (the exact "role" string from cast — WHO SAYS THIS LINE; never attribute another person's line to the creator), "section" (the beat, e.g. "Hook", "The reveal", or a short quote of the line) and "direction" (how it should land — name the emotional register plainly: sad, excited, deadpan, urgent, calm, amused, conspiratorial; plus pace: slow, fast, normal; plus where to pause or punch a word). 4-6 entries. For a line the creator does not say, write the direction as what the creator should REACT with or elicit, not as something they perform.
 - hook: 4-7 instructions for building the opening 3 seconds specifically — what is on screen, how the title text is sized and styled relative to captions, how long it holds, when the first cut lands.
 - editing: 5-8 instructions for the main edit pass — clip order, cutting pauses, caption style and word count on screen, when to change visuals, speaker sizing and framing, audio and colour consistency.
-- alwaysDo: 8-12 short rules, one line each. Non-negotiables that make an edit match this format.
-- avoid: 6-10 short "Don't ..." lines. Concrete mistakes that break this format specifically, not generic editing advice.
-- resources: 2-4 lines naming what the editor needs and the review workflow — where assets come from, what to compare the edit against, who reviews before it goes to the client. Do not invent URLs.
+- alwaysDo: 8-10 short rules, one line each. Non-negotiables that make an edit match this format.
+- avoid: 6-8 short "Don't ..." lines. Concrete mistakes that break this format specifically, not generic editing advice.
+- resources: 2-3 lines naming what the editor needs and the review workflow — where assets come from, what to compare the edit against, who reviews before it goes to the client. Do not invent URLs.
 
 Write every list bullet (prep, hook, editing, alwaysDo, avoid, resources) as an imperative instruction under 25 words. wardrobe, setting and energy are short prose, not lists. Be concrete everywhere — "loose linen shirt, no logos" beats "dress casually", "quiet room, warm lamp, no overhead light" beats "good lighting".
 
 Respond with ONLY valid JSON, no markdown fences, no preamble:
-{"contentFormat":"...","title":"...","prep":["..."],"wardrobe":"..." | null,"setting":"..." | null,"energy":"..." | null,"tonality":[{"section":"...","direction":"..."}],"hook":["..."],"editing":["..."],"alwaysDo":["..."],"avoid":["..."],"resources":["..."]}`;
+{"cast":[{"role":"...","whoTheyAre":"...","isCreator":true}],"castNote":"..." | null,"whyItWorks":{"visual":"...","verbal":"...","emotional":"...","curiosityLoop":"...","immutable":"..."},"contentFormat":"...","title":"...","prep":["..."],"wardrobe":"..." | null,"setting":"..." | null,"energy":"..." | null,"tonality":[{"speaker":"...","section":"...","direction":"..."}],"hook":["..."],"editing":["..."],"alwaysDo":["..."],"avoid":["..."],"resources":["..."]}`;
 
-  const message = await anthropic.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 2500,
-    messages: [{ role: "user", content: prompt }],
-  });
+  // Streamed rather than a plain create: the document now carries the cast
+  // breakdown and the five-part viral analysis on top of the editing spec,
+  // which lands around 3k tokens. The SDK refuses long non-streaming
+  // requests, and streaming also means a slow generation fails on our terms
+  // instead of the platform cutting the response mid-flight.
+  const message = await anthropic.messages
+    .stream({
+      model: "claude-sonnet-4-6",
+      max_tokens: 4000,
+      messages: [{ role: "user", content: prompt }],
+    })
+    .finalMessage();
   const raw = message.content.filter((b) => b.type === "text").map((b) => (b as any).text).join("\n").trim();
 
   let spec: FormatSpec;

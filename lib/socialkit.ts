@@ -25,7 +25,28 @@ export async function getSocialkitKey(clientId: string): Promise<string | null> 
   return data?.api_key || process.env.SOCIALKIT_API_KEY || null;
 }
 
-export async function fetchTranscript(platform: "tiktok" | "instagram", url: string, accessKey: string): Promise<string> {
+export interface TranscriptSegment {
+  text: string;
+  timestamp: string;
+  start: number;
+}
+
+export interface TranscriptResult {
+  transcript: string;
+  segments: TranscriptSegment[];
+}
+
+// The flat transcript is one undifferentiated block — for a two-person
+// video it reads exactly like a monologue, which is how a dialogue ends up
+// being prescribed as if one person said all of it. There's no speaker
+// diarization available, but the per-line timings are: pauses and turn
+// lengths are what make speaker changes inferable, so anything that has to
+// reason about who said what needs these, not the blob.
+export async function fetchTranscriptDetailed(
+  platform: "tiktok" | "instagram",
+  url: string,
+  accessKey: string
+): Promise<TranscriptResult> {
   const endpoint = `https://api.socialkit.dev/${platform}/transcript?access_key=${encodeURIComponent(accessKey)}&url=${encodeURIComponent(url)}`;
   const res = await fetch(endpoint);
   const json = await res.json().catch(() => ({}));
@@ -41,5 +62,17 @@ export async function fetchTranscript(platform: "tiktok" | "instagram", url: str
   if (!res.ok || !json.success) {
     throw new Error(json?.error || `Couldn't fetch that ${platform === "tiktok" ? "TikTok" : "Instagram"} video's transcript — check the link is public`);
   }
-  return (json.data?.transcript || "").trim();
+
+  const rawSegments: any[] = Array.isArray(json.data?.transcriptSegments) ? json.data.transcriptSegments : [];
+  return {
+    transcript: (json.data?.transcript || "").trim(),
+    segments: rawSegments
+      .filter((s) => s && typeof s.text === "string" && s.text.trim())
+      .map((s) => ({ text: String(s.text).trim(), timestamp: String(s.timestamp ?? ""), start: Number(s.start) || 0 })),
+  };
+}
+
+export async function fetchTranscript(platform: "tiktok" | "instagram", url: string, accessKey: string): Promise<string> {
+  const { transcript } = await fetchTranscriptDetailed(platform, url, accessKey);
+  return transcript;
 }
