@@ -16,12 +16,26 @@ import { createClient } from "@/lib/supabase";
 import { useSession } from "@/components/SessionProvider";
 import { fetchSops, createSop, updateSop, softDeleteSop, restoreSop, deleteSopForever, type Sop, type SopKind } from "@/lib/queries/sops";
 import { useToast, toastMessage } from "@/components/Toast";
+import MarkdownText from "@/components/MarkdownText";
 
 function sopAuthorBadge(sop: Sop): { label: string; tone: "accent" | "default" } | null {
   if (!sop.authorName) return null;
   if (sop.authorRole === "Creative Director") return { label: `Creative Director — ${sop.authorName}`, tone: "accent" };
   if (sop.authorRole === "Admin") return { label: sop.authorName, tone: "accent" };
   return { label: sop.authorName, tone: "default" };
+}
+
+// The card preview is a clamped two-to-six line teaser, so markdown syntax
+// in it reads as noise rather than formatting. Strips the markup the body
+// renderer would otherwise turn into headings, bold and links.
+function plainPreview(body: string): string {
+  return (body || "")
+    .replace(/^#{1,4}\s+/gm, "")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/^\s*[-*]\s+/gm, "")
+    .replace(/\s*\n+\s*/g, " ")
+    .trim();
 }
 
 const emptyForm = { title: "", body: "", thumbnail: "", images: [] as string[], referenceVideoLink: "" };
@@ -210,7 +224,7 @@ export default function SOPPage() {
                   </div>
                 </div>
                 <div style={{ fontWeight: 600, fontSize: 14.5, margin: "12px 0 6px" }}>{s.title}</div>
-                <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.5, display: "-webkit-box", WebkitLineClamp: isFormatTab ? 2 : 6, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{s.body}</div>
+                <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.5, display: "-webkit-box", WebkitLineClamp: isFormatTab ? 2 : 6, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{plainPreview(s.body)}</div>
                 {isFormatTab && s.referenceVideoLink && (
                   <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11.5, color: C.accentLight, marginTop: 10 }}>
                     <Link2 size={12} /> Reference video attached
@@ -261,7 +275,7 @@ export default function SOPPage() {
               <Button size="sm" variant="secondary" onClick={() => { setActiveSop(null); openEditModal(activeSop); }}><Pencil size={12} /> Edit</Button>
             )}
           </div>
-          <div style={{ fontSize: 13.5, color: C.text, lineHeight: 1.6, whiteSpace: "pre-wrap", marginBottom: 16 }}>{activeSop.body}</div>
+          <MarkdownText text={activeSop.body} style={{ color: C.text, marginBottom: 16 }} />
           {activeSop.images && activeSop.images.length > 0 && (
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 11.5, color: C.textFaint, marginBottom: 8, fontWeight: 600 }}>Reference images</div>
