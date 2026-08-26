@@ -96,7 +96,12 @@ export default function ViralFeedPanel() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Couldn't create that SOP");
-      showToast(`Format SOP created: "${json.sop?.title || "Untitled"}" — find it under SOP Libraries.`, "success");
+      showToast(
+        json.alreadyExisted
+          ? `"${json.sop?.title || "Untitled"}" is already a Format SOP — find it under SOP Libraries.`
+          : `Format SOP created: "${json.sop?.title || "Untitled"}" — find it under SOP Libraries.`,
+        "success"
+      );
     } catch (err) {
       setError(toastMessage(err, "Couldn't turn that into a Format SOP — try again."));
     } finally {

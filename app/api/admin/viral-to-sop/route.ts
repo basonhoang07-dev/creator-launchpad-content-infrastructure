@@ -98,6 +98,19 @@ export async function POST(req: NextRequest) {
     .maybeSingle();
   const niche: string | null = campaign?.niche ?? null;
 
+  // Promoting the same alert twice is an easy double-click, and a duplicate
+  // Format SOP is worse than none — hand back the existing one instead of
+  // creating a second copy (and instead of paying for another breakdown).
+  const { data: existing } = await admin
+    .from("sops")
+    .select("id, title")
+    .eq("organization_id", profile.organization_id)
+    .eq("kind", "format")
+    .eq("reference_video_link", video.url)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (existing) return NextResponse.json({ sop: existing, alreadyExisted: true });
+
   // Reuse an existing breakdown of this exact video if one exists anywhere in
   // the org — re-analysing costs a SocialKit request and an AI credit for a
   // result we already have.
