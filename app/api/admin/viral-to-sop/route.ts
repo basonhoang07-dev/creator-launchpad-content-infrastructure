@@ -37,6 +37,13 @@ interface FormatSpec {
   contentFormat?: string;
   title?: string;
   prep?: string[];
+  // On-camera direction for whoever films it. Separate from the editing
+  // steps because it's read before the shoot by a different person — an
+  // editor can't fix the wrong outfit or the wrong energy after the fact.
+  wardrobe?: string | null;
+  setting?: string | null;
+  energy?: string | null;
+  tonality?: { section?: string; direction?: string }[];
   hook?: string[];
   editing?: string[];
   alwaysDo?: string[];
@@ -69,6 +76,23 @@ function specToSopBody(spec: FormatSpec, sourceUrl: string, handle: string, nich
   out.push("");
 
   section("Prep", bullets(spec.prep));
+
+  // Deliberately unnumbered so the Step 1-5 editing sequence keeps the
+  // numbering everyone already knows from the written SOPs. This section is
+  // read by whoever is on camera, before any of that applies.
+  const tonality = (spec.tonality || []).filter((t) => t?.section && t?.direction);
+  if (spec.wardrobe || spec.setting || spec.energy || tonality.length > 0) {
+    out.push("## Before you film: look, setting & delivery", "");
+    if (spec.wardrobe) out.push(`**Wear:** ${spec.wardrobe}`, "");
+    if (spec.setting) out.push(`**Setting & background:** ${spec.setting}`, "");
+    if (spec.energy) out.push(`**Overall energy:** ${spec.energy}`, "");
+    if (tonality.length > 0) {
+      out.push("**How to say each part:**", "");
+      tonality.forEach((t) => out.push(`- **${t.section}:** ${t.direction}`));
+      out.push("");
+    }
+  }
+
   section("Step 1: The Hook", bullets(spec.hook));
   section("Step 2: Basic editing", bullets(spec.editing));
   section("Step 3: Always Do These", bullets(spec.alwaysDo));
@@ -166,7 +190,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const prompt = `You're writing a FORMAT SOP: an editing spec a video editor follows to reproduce a proven short-form format. The reader is an editor, not a scriptwriter — they need to know how to cut, caption and assemble the video, not how to write one.
+  const prompt = `You're writing a FORMAT SOP for a proven short-form video format. It has two readers: the CREATOR, who films it and needs to know how to look, where to shoot, and how to deliver each line — and the EDITOR, who cuts and captions it. Neither needs to be told how to write a script.
 
 Here is the reference video's full transcript:
 """
@@ -183,16 +207,20 @@ Produce:
 - contentFormat: a short label for the format itself, the way an editor would name it — for example "Green Screen / Image Overlay Talking Head", "Static Talking Head + B-roll Cutaways", "POV Skit with Text Overlay". 3-7 words.
 - title: a short name for this SOP (under 60 characters) — name the FORMAT, not this video's specific story, since other creators will rebuild it with their own content.
 - prep: 3-5 things to do before opening the editor — watch the reference, gather assets, note the structure.
+- wardrobe: what the creator should WEAR for this format and why it fits the message — be specific about the register (loose vacation fit vs. clean fitted basics vs. gym clothes), and say what to avoid. 1-3 sentences. null only if genuinely nothing about the outfit matters.
+- setting: where to shoot it and what the background should signal — the vibe it needs to give off (quiet and expensive, lived-in and real, busy and public, outdoors and free), plus framing and lighting. Say what would break the illusion. 1-3 sentences.
+- energy: the overall energy the creator should carry through the whole video in one or two sentences — is this calm and understated, hyped and fast, conspiratorial and quiet, warm and vulnerable? Name it plainly.
+- tonality: an array of per-beat delivery directions covering the whole video in order. Each has "section" (the beat, e.g. "Hook", "The reveal", or a short quote of the line) and "direction" (how to actually say it — name the emotional register plainly: sad, excited, deadpan, urgent, calm, amused, conspiratorial; plus pace: slow, fast, normal; plus where to pause or punch a word). 4-6 entries.
 - hook: 4-7 instructions for building the opening 3 seconds specifically — what is on screen, how the title text is sized and styled relative to captions, how long it holds, when the first cut lands.
 - editing: 5-8 instructions for the main edit pass — clip order, cutting pauses, caption style and word count on screen, when to change visuals, speaker sizing and framing, audio and colour consistency.
 - alwaysDo: 8-12 short rules, one line each. Non-negotiables that make an edit match this format.
 - avoid: 6-10 short "Don't ..." lines. Concrete mistakes that break this format specifically, not generic editing advice.
 - resources: 2-4 lines naming what the editor needs and the review workflow — where assets come from, what to compare the edit against, who reviews before it goes to the client. Do not invent URLs.
 
-Write every bullet as an imperative instruction. Keep each under 25 words.
+Write every list bullet (prep, hook, editing, alwaysDo, avoid, resources) as an imperative instruction under 25 words. wardrobe, setting and energy are short prose, not lists. Be concrete everywhere — "loose linen shirt, no logos" beats "dress casually", "quiet room, warm lamp, no overhead light" beats "good lighting".
 
 Respond with ONLY valid JSON, no markdown fences, no preamble:
-{"contentFormat":"...","title":"...","prep":["..."],"hook":["..."],"editing":["..."],"alwaysDo":["..."],"avoid":["..."],"resources":["..."]}`;
+{"contentFormat":"...","title":"...","prep":["..."],"wardrobe":"..." | null,"setting":"..." | null,"energy":"..." | null,"tonality":[{"section":"...","direction":"..."}],"hook":["..."],"editing":["..."],"alwaysDo":["..."],"avoid":["..."],"resources":["..."]}`;
 
   const message = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
