@@ -23,7 +23,7 @@ import {
   fetchTrackedCreators, fetchViralAlerts, dismissViralAlert,
   type TrackedCreator, type ViralAlertVideo,
 } from "@/lib/queries/viralAlerts";
-import { formatVelocity } from "@/lib/viralAlerts";
+import { formatVelocity, VIRAL_THRESHOLD_MIN } from "@/lib/viralAlerts";
 import { useToast, toastMessage } from "@/components/Toast";
 
 function relativeTime(iso: string | null): string {
@@ -371,12 +371,20 @@ export default function ViralAlertsPanel({ clientId, activeBrand }: { clientId: 
             />
           </Field>
           <Field label="Alert above (views/24h)">
-            <input style={inputStyle} type="number" value={threshold} onChange={(e) => setThreshold(e.target.value)} placeholder="10000" />
+            <input
+              style={inputStyle}
+              type="number"
+              min={VIRAL_THRESHOLD_MIN}
+              value={threshold}
+              onChange={(e) => setThreshold(e.target.value)}
+              placeholder={String(VIRAL_THRESHOLD_MIN)}
+            />
           </Field>
         </div>
         <div style={{ fontSize: 11, color: C.textFaint, marginBottom: 14, marginTop: -6, lineHeight: 1.5 }}>
-          Set the threshold to what's actually notable <i>for this creator</i> — a big account clears 10k without trying,
-          a smaller one hitting it means something.
+          Minimum {VIRAL_THRESHOLD_MIN.toLocaleString()} views/24h — anything lower gets raised to it. Raise it for a big
+          account that clears that without trying; the floor is there so an ordinary post on a small account never trips
+          an alert.
         </div>
         {error && (
           <div style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 11.5, color: C.danger, marginBottom: 14, lineHeight: 1.5 }}>

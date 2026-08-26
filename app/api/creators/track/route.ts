@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireClientAccess } from "@/lib/auth";
-import { parseCreatorInput } from "@/lib/viralAlerts";
+import { parseCreatorInput, VIRAL_THRESHOLD_MIN } from "@/lib/viralAlerts";
 
 export async function POST(req: NextRequest) {
   const { clientId, brand, platform, input, threshold } = await req.json();
@@ -30,7 +30,10 @@ export async function POST(req: NextRequest) {
       platform,
       profile_url: parsed.profileUrl,
       handle: parsed.handle,
-      viral_threshold: Number(threshold) > 0 ? Number(threshold) : 10000,
+      // Enforced as a floor, not a default — a smaller number can't be
+      // saved, so a low-traffic creator's ordinary post can never trip an
+      // alert.
+      viral_threshold: Math.max(Number(threshold) || VIRAL_THRESHOLD_MIN, VIRAL_THRESHOLD_MIN),
     })
     .select()
     .single();

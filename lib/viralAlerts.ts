@@ -38,6 +38,13 @@ const MS_PER_HOUR = 3_600_000;
 // back catalogue the first time a creator is ever checked.
 export const MAX_VIDEO_AGE_DAYS = 14;
 
+// Floor for what counts as "going viral", in views gained per 24h. Set
+// deliberately high: an alert is only worth sending if the video is doing
+// numbers worth studying, and calibrating per-creator (so a small account's
+// ordinary post trips the wire) produces noise rather than signal. Applied
+// as a minimum, not a default — a lower value can't be saved.
+export const VIRAL_THRESHOLD_MIN = 10000;
+
 // Below this, a velocity number is too noisy to trust: two readings a few
 // minutes apart can extrapolate a tiny bump into a huge fake 24h rate.
 const MIN_HOURS_BETWEEN_READINGS = 1;
