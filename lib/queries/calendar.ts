@@ -583,11 +583,12 @@ export async function saveBrandProfile(supabase: SupabaseClient, clientId: strin
 export async function createBoard(
   supabase: SupabaseClient,
   clientId: string,
-  input: { name: string; rate: number; minPosts: number; maxPosts: number; sessionCapacity: number; concept: { title: string; format: string } | null }
+  input: { name: string; niche?: string | null; rate: number; minPosts: number; maxPosts: number; sessionCapacity: number; concept: { title: string; format: string } | null }
 ) {
   const { error: campaignError } = await supabase.from("retainer_campaigns").insert({
     client_id: clientId,
     brand: input.name,
+    niche: input.niche ?? null,
     rate: input.rate,
     min_posts: input.minPosts,
     max_posts: input.maxPosts,

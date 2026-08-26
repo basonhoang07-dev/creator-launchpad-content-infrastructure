@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { CalendarCheck, Check, ChevronRight, Film, Lock, Wand2 } from "lucide-react";
-import { C } from "@/lib/theme";
+import { C, NICHES, CUSTOM_NICHE } from "@/lib/theme";
 import { Button, Card, Field, Modal, SectionHeader, Badge, inputStyle } from "@/components/ui";
 import { parseDateOnly } from "@/lib/helpers";
 
@@ -100,6 +100,7 @@ export function CapacitySetupModal({ brand, initialValue, onSave, onClose }: { b
 
 export interface NewBoardPayload {
   name: string;
+  niche: string | null;
   rate: number;
   minPosts: number;
   maxPosts: number;
@@ -110,6 +111,8 @@ export interface NewBoardPayload {
 export function NewBoardWizard({ existingBrands, onCreate, onClose }: { existingBrands: string[]; onCreate: (payload: NewBoardPayload) => void; onClose: () => void }) {
   const [step, setStep] = useState(1);
   const [name, setName] = useState("");
+  const [niche, setNiche] = useState("");
+  const [customNiche, setCustomNiche] = useState("");
   const [rate, setRate] = useState("");
   const [minPosts, setMinPosts] = useState("");
   const [maxPosts, setMaxPosts] = useState("");
@@ -120,10 +123,17 @@ export function NewBoardWizard({ existingBrands, onCreate, onClose }: { existing
   const nameValid = !!name.trim() && !existingBrands.includes(name.trim());
   const STEPS = ["Brand", "KPI goal", "First concept"];
 
+  // "Other" is a UI affordance, not a real niche — never store it as one.
+  function resolvedNiche(): string | null {
+    if (niche === CUSTOM_NICHE) return customNiche.trim() || null;
+    return niche || null;
+  }
+
   function finish(skipConcept: boolean) {
     const brandName = name.trim();
     onCreate({
       name: brandName,
+      niche: resolvedNiche(),
       rate: Number(rate) || 0,
       minPosts: Number(minPosts) || 0,
       maxPosts: Number(maxPosts) || 0,
@@ -149,7 +159,26 @@ export function NewBoardWizard({ existingBrands, onCreate, onClose }: { existing
             <input style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Vela Haircare" autoFocus />
           </Field>
           {name.trim() && !nameValid && <div style={{ fontSize: 11.5, color: C.danger, marginBottom: 14 }}>A board with this name already exists.</div>}
-          <div style={{ fontSize: 11.5, color: C.textFaint, marginBottom: 14 }}>Creates a separate script board so scripts never get mixed up between brands.</div>
+
+          <Field label="Niche">
+            <select style={inputStyle} value={niche} onChange={(e) => setNiche(e.target.value)}>
+              <option value="">Select a niche...</option>
+              {NICHES.map((n) => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+              <option value={CUSTOM_NICHE}>{CUSTOM_NICHE}</option>
+            </select>
+          </Field>
+          {niche === CUSTOM_NICHE && (
+            <Field label="Your niche">
+              <input style={inputStyle} value={customNiche} onChange={(e) => setCustomNiche(e.target.value)} placeholder="e.g. Van Life" autoFocus />
+            </Field>
+          )}
+
+          <div style={{ fontSize: 11.5, color: C.textFaint, marginBottom: 14 }}>
+            Creates a separate script board so scripts never get mixed up between brands. The niche is how competitor
+            videos from this board get grouped — pick the broad category, not the specific product.
+          </div>
           <Button style={{ width: "100%", justifyContent: "center" }} onClick={() => setStep(2)} disabled={!nameValid}>Continue</Button>
         </>
       )}

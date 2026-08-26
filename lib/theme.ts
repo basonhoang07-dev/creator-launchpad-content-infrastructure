@@ -39,6 +39,34 @@ export const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
 };
 
 export const FOCUS_TYPES = ["Researching & ideating", "Scripting", "Filming"];
+
+// Broad content niches a brand board can sit in. Deliberately a fixed list
+// rather than free text: this is what the Admin Viral Feed filters on, and
+// free entry fragments that instantly ("fitness" / "Fitness" / "gym" all
+// becoming separate buckets). Kept broad so one label covers a whole
+// vertical — CUSTOM_NICHE is the escape hatch for anything genuinely new.
+export const NICHES = [
+  "Fitness & Health",
+  "Make Money Online",
+  "Productivity",
+  "Study Tools",
+  "Beauty & Skincare",
+  "Fashion",
+  "Food & Cooking",
+  "Tech & Gadgets",
+  "Finance & Investing",
+  "Travel",
+  "Home & Lifestyle",
+  "Self-Improvement",
+  "Career & Education",
+  "Parenting",
+  "Pets",
+  "Gaming",
+  "SaaS & Apps",
+  "Dating & Relationships",
+];
+
+export const CUSTOM_NICHE = "Other (type your own)";
 export const BLOCK_TYPES = ["Unavailable", "Researching & ideating", "Scripting", "Filming", "Editing"];
 export const BLOCK_COLORS: Record<string, { bg: string; color: string }> = {
   Unavailable: { bg: "rgba(229,72,77,0.16)", color: "#E5484D" },

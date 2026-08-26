@@ -17,11 +17,11 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, Eye, FileText, Flame, Loader2, Play, Plug, Plus, RefreshCw, Trash2, TrendingUp } from "lucide-react";
-import { C } from "@/lib/theme";
+import { C, NICHES, CUSTOM_NICHE } from "@/lib/theme";
 import { Card, Button, Badge, Field, EmptyState, inputStyle } from "@/components/ui";
 import { createClient } from "@/lib/supabase";
 import {
-  fetchTrackedCreators, fetchViralAlerts, dismissViralAlert,
+  fetchTrackedCreators, fetchViralAlerts, dismissViralAlert, fetchCampaignNiche, updateCampaignNiche,
   type TrackedCreator, type ViralAlertVideo,
 } from "@/lib/queries/viralAlerts";
 import { formatVelocity, VIRAL_THRESHOLD_MIN } from "@/lib/viralAlerts";
@@ -55,6 +55,13 @@ export default function ViralAlertsPanel({ clientId, activeBrand }: { clientId: 
   // client without one gets a setup path instead of an error after clicking.
   const [connected, setConnected] = useState<boolean | null>(null);
 
+  // Niche of the board these creators belong to. Lives on the campaign so
+  // it's picked once here and inherited by every creator and alert under
+  // it — that's what makes the admin Viral Feed searchable by niche.
+  const [niche, setNiche] = useState<string | null>(null);
+  const [customNiche, setCustomNiche] = useState("");
+  const [savingNiche, setSavingNiche] = useState(false);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -81,6 +88,39 @@ export default function ViralAlertsPanel({ clientId, activeBrand }: { clientId: 
   useEffect(() => {
     reload();
   }, [reload]);
+
+  // Reloaded per board rather than once: switching boards in the calendar
+  // header swaps which campaign's niche is being edited.
+  useEffect(() => {
+    if (activeBrand === "All") {
+      setNiche(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const value = await fetchCampaignNiche(createClient(), clientId, activeBrand);
+      if (cancelled) return;
+      setNiche(value);
+      // A niche that isn't one of the presets came from the free-text box,
+      // so put it back there instead of silently falling off the select.
+      setCustomNiche(value && !NICHES.includes(value) ? value : "");
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [clientId, activeBrand]);
+
+  async function saveNiche(value: string | null) {
+    setNiche(value);
+    setSavingNiche(true);
+    try {
+      await updateCampaignNiche(createClient(), clientId, activeBrand, value);
+    } catch (err) {
+      showToast(toastMessage(err, "Couldn't save that niche — try again."));
+    } finally {
+      setSavingNiche(false);
+    }
+  }
 
   async function addCreator() {
     if (!input.trim()) return;
@@ -340,6 +380,51 @@ export default function ViralAlertsPanel({ clientId, activeBrand }: { clientId: 
           {creators.length === 0 && <EmptyState icon={TrendingUp} text="No creators tracked yet — add one below." />}
         </div>
       </Card>
+
+      {activeBrand !== "All" && (
+        <Card>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Niche for {activeBrand}</div>
+          <div style={{ fontSize: 11, color: C.textFaint, marginBottom: 12, lineHeight: 1.5 }}>
+            What vertical this board is in. Tag it once and every creator you track here — and every viral video they
+            put out — gets filed under it, so proven formats from your niche can be pulled into your Format SOPs.
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: niche === CUSTOM_NICHE || customNiche ? "1fr 1fr" : "1fr", gap: 10 }}>
+            <select
+              style={inputStyle}
+              value={niche === null ? "" : NICHES.includes(niche) ? niche : CUSTOM_NICHE}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === CUSTOM_NICHE) {
+                  // Don't write anything yet — wait for the text box, or the
+                  // board would briefly be tagged with the sentinel itself.
+                  setNiche(CUSTOM_NICHE);
+                  setCustomNiche("");
+                } else {
+                  setCustomNiche("");
+                  saveNiche(v || null);
+                }
+              }}
+            >
+              <option value="">Not set</option>
+              {NICHES.map((n) => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+              <option value={CUSTOM_NICHE}>{CUSTOM_NICHE}</option>
+            </select>
+            {(niche === CUSTOM_NICHE || customNiche) && (
+              <input
+                style={inputStyle}
+                value={customNiche}
+                onChange={(e) => setCustomNiche(e.target.value)}
+                onBlur={() => saveNiche(customNiche.trim() || null)}
+                onKeyDown={(e) => e.key === "Enter" && saveNiche(customNiche.trim() || null)}
+                placeholder="Type your niche..."
+              />
+            )}
+          </div>
+          {savingNiche && <div style={{ fontSize: 11, color: C.textFaint, marginTop: 8 }}>Saving...</div>}
+        </Card>
+      )}
 
       <Card>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>
