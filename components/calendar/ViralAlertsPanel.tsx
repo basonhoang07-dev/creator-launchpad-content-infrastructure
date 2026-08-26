@@ -7,11 +7,12 @@
 // climbing fast (default 10k views/24h) — on Home and in the client's
 // Discord 1-on-1 channel.
 //
-// "Check now" is manual rather than automatic because each check spends one
-// SocialKit request per tracked creator out of the client's monthly quota
-// (free tier is 20, shared with reference breakdowns). The scheduled version
-// is written and ready in app/api/cron/viral-check for when they're on a
-// paid tier.
+// "Check now" is manual rather than scheduled: Vercel's Hobby plan caps cron
+// at once a day, and a check costs real money either way. Every tracked
+// creator is fetched in ONE batched Apify call per check (see
+// lib/apifyCreators.ts), so cost scales with checks rather than with how
+// many creators are being watched. The scheduled version is written and
+// ready in app/api/cron/viral-check.
 
 import React, { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -396,8 +397,8 @@ export default function ViralAlertsPanel({ clientId, activeBrand }: { clientId: 
           {adding ? "Adding..." : "Track this creator"}
         </Button>
         <div style={{ fontSize: 10.5, color: C.textFaint, marginTop: 12, lineHeight: 1.5 }}>
-          Each "Check now" uses one SocialKit request per creator you're tracking — the free plan gives you 20 a month,
-          shared with reference breakdowns.
+          Every tracked creator is fetched in one batched call per check, so adding more creators costs very little
+          extra — roughly 50–60 checks a month on the free plan.
         </div>
       </Card>
     </div>
