@@ -136,10 +136,13 @@ export default function OpportunitiesPage() {
         throw new Error("That took too long — try again in a moment.");
       }
       if (!res.ok) throw new Error(json.error || "Couldn't sync from Discord");
+      // A run is capped, so a first sync over channel history leaves some
+      // behind. Say so rather than letting it look like that's everything.
+      const more = json.remaining > 0 ? ` ${json.remaining} older post${json.remaining === 1 ? "" : "s"} still to read — sync again.` : "";
       showToast(
         json.imported > 0
-          ? `Pulled in ${json.imported} deal${json.imported === 1 ? "" : "s"} from Discord.`
-          : `No new deals — scanned ${json.scanned} recent message${json.scanned === 1 ? "" : "s"}.`,
+          ? `Pulled in ${json.imported} deal${json.imported === 1 ? "" : "s"} from Discord.${more}`
+          : `No new deals — scanned ${json.scanned} recent message${json.scanned === 1 ? "" : "s"}.${more}`,
         "success"
       );
       reload();

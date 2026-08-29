@@ -33,6 +33,13 @@ const MESSAGES_PER_CHANNEL = 30;
 // extraction isn't paying to classify chatter.
 const MIN_DEAL_LENGTH = 120;
 
+// How many new posts one run will extract. The first sync against a channel
+// with history hit both limits at once — 22 posts ran 67s and truncated at
+// 4000 output tokens, losing the whole batch. Newest first, and since
+// already-imported messages are skipped, running again works through the
+// rest. In steady state there are only one or two new posts anyway.
+const MAX_PER_RUN = 8;
+
 const DEAL_SCHEMA = {
   type: "object",
   properties: {
@@ -143,11 +150,14 @@ export async function POST(req: NextRequest) {
     .select("discord_message_id")
     .in("discord_message_id", candidates.map((m) => m.id));
   const seenIds = new Set((seen || []).map((r: any) => r.discord_message_id));
-  const fresh = candidates.filter((m) => !seenIds.has(m.id));
+  const unseen = candidates.filter((m) => !seenIds.has(m.id));
 
-  if (fresh.length === 0) {
-    return NextResponse.json({ imported: 0, updated: 0, scanned: messages.length, alreadyHad: candidates.length });
+  if (unseen.length === 0) {
+    return NextResponse.json({ imported: 0, remaining: 0, scanned: messages.length, alreadyHad: candidates.length });
   }
+
+  const fresh = unseen.slice(0, MAX_PER_RUN);
+  const remaining = unseen.length - fresh.length;
 
   const block = fresh
     .map((m) => `<message id="${m.id}" author="${m.authorName}">\n${m.content}\n${m.embedText}\n</message>`)
@@ -171,6 +181,8 @@ For the real ones:
 - website: the brand's own domain if the post makes it determinable. Not a Notion, Discord, Google Docs or form link — leave empty rather than guessing.
 
 Available niches (use one exactly, or leave empty): ${NICHES.join(", ")}
+
+Keep every field tight — description under 30 words, deliverables and requirements under 35 each, paySummary under 45. These are scan-and-decide cards, not the full post; the original is one click away.
 
 Record everything by calling extract_deals.`;
 
@@ -220,7 +232,7 @@ Record everything by calling extract_deals.`;
     });
 
   if (rows.length === 0) {
-    return NextResponse.json({ imported: 0, updated: 0, scanned: messages.length, noDealsFound: true });
+    return NextResponse.json({ imported: 0, remaining, scanned: messages.length, noDealsFound: true });
   }
 
   const { data: inserted, error } = await admin
@@ -229,5 +241,5 @@ Record everything by calling extract_deals.`;
     .select("id");
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  return NextResponse.json({ imported: inserted?.length || 0, scanned: messages.length, considered: fresh.length });
+  return NextResponse.json({ imported: inserted?.length || 0, remaining, scanned: messages.length, considered: fresh.length });
 }
