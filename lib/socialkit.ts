@@ -76,8 +76,3 @@ export async function fetchTranscriptDetailed(
       .map((s) => ({ text: String(s.text).trim(), timestamp: String(s.timestamp ?? ""), start: Number(s.start) || 0 })),
   };
 }
-
-export async function fetchTranscript(platform: "tiktok" | "instagram", url: string, accessKey: string): Promise<string> {
-  const { transcript } = await fetchTranscriptDetailed(platform, url, accessKey);
-  return transcript;
-}

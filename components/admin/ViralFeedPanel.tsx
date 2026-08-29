@@ -89,13 +89,30 @@ export default function ViralFeedPanel() {
     setError("");
     setPromotingId(a.id);
     try {
-      const res = await fetch("/api/admin/viral-to-sop", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clientId: a.clientId, videoId: a.id }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Couldn't create that SOP");
+      const call = async () => {
+        const res = await fetch("/api/admin/viral-to-sop", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ clientId: a.clientId, videoId: a.id }),
+        });
+        // A timeout comes back as Vercel's plain-text error page, which would
+        // otherwise surface as an unreadable JSON parse error.
+        const text = await res.text();
+        let parsed: any;
+        try {
+          parsed = JSON.parse(text);
+        } catch {
+          throw new Error("That took too long to build — try again in a moment.");
+        }
+        if (!res.ok) throw new Error(parsed.error || "Couldn't create that SOP");
+        return parsed;
+      };
+
+      // The first call may only fetch and cache the transcript (see the
+      // route: doing both in one request overran the function limit). When
+      // it says so, go straight back for the document itself.
+      let json = await call();
+      if (json.warmed) json = await call();
       showToast(
         json.alreadyExisted
           ? `"${json.sop?.title || "Untitled"}" is already a Format SOP — find it under SOP Libraries.`

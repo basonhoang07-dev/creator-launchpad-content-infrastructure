@@ -230,12 +230,18 @@ export async function POST(req: NextRequest) {
     } catch (err: any) {
       return NextResponse.json({ error: err.message || "Couldn't fetch that video's transcript" }, { status: 502 });
     }
-    // Best-effort — a failed cache write costs a request next time, not the
-    // SOP being generated now.
     await admin
       .from("tracked_creator_videos")
       .update({ transcript, transcript_segments: segments })
       .eq("id", video.id);
+
+    // Stop here and let the caller come straight back. Fetching a transcript
+    // and generating the document each take most of a minute, and together
+    // they overran Vercel's 60s function ceiling — the whole request died
+    // after the transcript had already been paid for. Splitting it across
+    // two invocations keeps each one comfortably inside the limit, and the
+    // second finds the transcript cached above, so nothing is fetched twice.
+    if (transcript) return NextResponse.json({ warmed: true });
   }
   if (!transcript) {
     return NextResponse.json(
