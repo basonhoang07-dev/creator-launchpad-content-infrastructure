@@ -24,7 +24,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentProfile } from "@/lib/supabase/server";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
-import { detectPlatform, getSocialkitKey, fetchTranscriptDetailed, type TranscriptSegment } from "@/lib/socialkit";
+import { detectPlatform, getSocialkitKey, type TranscriptSegment } from "@/lib/socialkit";
+import { getTranscript } from "@/lib/transcripts";
 import { isAnthropicConfigured, ANTHROPIC_NOT_CONFIGURED_MESSAGE } from "@/lib/anthropicStatus";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -217,16 +218,13 @@ export async function POST(req: NextRequest) {
     ? (video as any).transcript_segments
     : [];
 
-  if (!transcript || segments.length === 0) {
+  // Keyed on the transcript alone, not the segments: Apify's actor returns
+  // paragraph-sized chunks, so a cached entry can legitimately have very few
+  // segments and must not be re-fetched for that.
+  if (!transcript) {
     const key = await getSocialkitKey(clientId);
-    if (!key) {
-      return NextResponse.json(
-        { error: "That client hasn't connected SocialKit — connect it under Integrations to pull transcripts." },
-        { status: 400 }
-      );
-    }
     try {
-      const result = await fetchTranscriptDetailed(platform as "tiktok" | "instagram", video.url, key);
+      const result = await getTranscript(platform as "tiktok" | "instagram", video.url, key);
       transcript = result.transcript;
       segments = result.segments;
     } catch (err: any) {

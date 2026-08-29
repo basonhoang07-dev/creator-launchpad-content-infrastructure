@@ -24,7 +24,9 @@ import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
 import { requireClientAccess, checkAiUsageCap, logAiUsage } from "@/lib/auth";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
-import { detectPlatform, getSocialkitKey, fetchTranscript } from "@/lib/socialkit";
+import { detectPlatform, getSocialkitKey } from "@/lib/socialkit";
+import { getTranscript } from "@/lib/transcripts";
+import { isApifyTranscriptConfigured } from "@/lib/apifyTranscript";
 import { isAnthropicConfigured, ANTHROPIC_NOT_CONFIGURED_MESSAGE } from "@/lib/anthropicStatus";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -61,8 +63,11 @@ export async function POST(req: NextRequest) {
   const usage = await checkAiUsageCap(supabase, clientId);
   if (!usage.ok) return NextResponse.json({ error: usage.error }, { status: usage.status });
 
+  // Apify first for Instagram, SocialKit as fallback and for TikTok — a
+  // client shouldn't lose breakdowns for the rest of the month because the
+  // org's shared SocialKit key hit its 20.
   const accessKey = await getSocialkitKey(clientId);
-  if (!accessKey) {
+  if (!accessKey && !isApifyTranscriptConfigured()) {
     return NextResponse.json(
       { error: "Connect SocialKit under Integrations first — it's free for 20 breakdowns a month." },
       { status: 503 }
@@ -71,7 +76,7 @@ export async function POST(req: NextRequest) {
 
   let transcript: string;
   try {
-    transcript = await fetchTranscript(platform, referenceUrl, accessKey);
+    transcript = (await getTranscript(platform, referenceUrl, accessKey)).transcript;
   } catch (err: any) {
     return NextResponse.json({ error: err.message || "Couldn't fetch that video's transcript" }, { status: 502 });
   }
