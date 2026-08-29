@@ -30,10 +30,12 @@ import { isAnthropicConfigured, ANTHROPIC_NOT_CONFIGURED_MESSAGE } from "@/lib/a
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-// 60s is the Vercel Hobby maximum, and this route got close enough to it to
-// fail twice: once fetching a transcript and generating in the same request,
+// 60s is the Vercel Hobby maximum, and this route hit it twice before it
+// worked: once fetching the transcript and generating in the same request,
 // and once on the generation alone while the model narrated its reasoning
-// before the JSON. Hence the two-phase split below and the prefilled reply.
+// before the JSON. Hence the two-phase split below, the forced tool call,
+// and the hard word caps in the prompt — measured at 41s end to end, which
+// leaves enough room for a slow day.
 export const maxDuration = 60;
 
 interface FormatSpec {
@@ -73,6 +75,67 @@ interface FormatSpec {
   avoid?: string[];
   resources?: string[];
 }
+
+// Doubles as the output contract: the model fills this in via a forced tool
+// call, so a misshapen response isn't possible and there's no JSON to parse
+// out of prose. Descriptions are deliberately terse — the real instructions
+// live in the prompt, and repeating them here would just cost tokens.
+const strings = (description: string) => ({ type: "array", items: { type: "string" }, description });
+
+const FORMAT_SOP_SCHEMA = {
+  type: "object",
+  properties: {
+    cast: {
+      type: "array",
+      description: "Everyone who speaks. Exactly one has isCreator true.",
+      items: {
+        type: "object",
+        properties: {
+          role: { type: "string", description: "Short label, 1-3 words, used as their name throughout." },
+          whoTheyAre: { type: "string" },
+          isCreator: { type: "boolean" },
+        },
+        required: ["role", "whoTheyAre", "isCreator"],
+      },
+    },
+    castNote: { type: "string", description: "What a client needs to rebuild this. Empty string if nothing special." },
+    whyItWorks: {
+      type: "object",
+      properties: {
+        visual: { type: "string" },
+        verbal: { type: "string" },
+        emotional: { type: "string" },
+        curiosityLoop: { type: "string" },
+        immutable: { type: "string" },
+      },
+      required: ["visual", "verbal", "emotional", "curiosityLoop", "immutable"],
+    },
+    contentFormat: { type: "string" },
+    title: { type: "string" },
+    prep: strings("Before filming or editing."),
+    wardrobe: { type: "string" },
+    setting: { type: "string" },
+    energy: { type: "string" },
+    tonality: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          speaker: { type: "string", description: "Must match a cast role exactly." },
+          section: { type: "string" },
+          direction: { type: "string" },
+        },
+        required: ["speaker", "section", "direction"],
+      },
+    },
+    hook: strings("Building the opening 3 seconds."),
+    editing: strings("The main edit pass."),
+    alwaysDo: strings("Non-negotiables."),
+    avoid: strings("Concrete mistakes, each starting with Don't."),
+    resources: strings("What the editor needs and the review workflow."),
+  },
+  required: ["cast", "whyItWorks", "contentFormat", "title", "prep", "tonality", "hook", "editing", "alwaysDo", "avoid", "resources"],
+} as const;
 
 function bullets(items: unknown): string[] {
   return Array.isArray(items) ? items.filter((i): i is string => typeof i === "string" && i.trim().length > 0) : [];
@@ -288,20 +351,20 @@ Cross-check two things before you commit:
 STEP 2 — you cannot see the video, only hear it. Infer the visual treatment from what is being said, how it is paced, and what the caption implies. Where a call genuinely cannot be made from audio alone, write the instruction so the editor checks it against the reference (for example "match the caption font used in the reference") rather than inventing a specific font, colour or asset that might be wrong. Never name a specific brand, font file, cloud folder or asset library that was not mentioned — say "the approved library" instead.
 
 Produce:
-- cast: array of everyone who speaks. Each has "role" (a SHORT label of one to three words, used as a name everywhere else in the document — "Creator", "Dad", "Interviewer", "Friend on the call". Never a description or a sentence; the detail belongs in whoTheyAre), "whoTheyAre" (one line on their relationship to the creator and what they contribute), and "isCreator" (true for exactly one — the person whose account posted this, or the person the video is about if they never speak). If it is genuinely one person, return a single entry.
-- castNote: one or two sentences on what a client needs in order to rebuild this — especially if the format REQUIRES a second real person ("this only works with a genuine call from someone who actually knows you; casting a stand-in reads as fake instantly"). null for a straightforward solo piece.
-- whyItWorks: an object explaining the mechanism. Be specific to this video, never generic:
+- cast: array of everyone who speaks. Each has "role" (a SHORT label of one to three words, used as a name everywhere else in the document — "Creator", "Dad", "Interviewer", "Friend on the call". Never a description or a sentence; the detail belongs in whoTheyAre), "whoTheyAre" (their relationship to the creator, max 12 words — not a sentence), and "isCreator" (true for exactly one — the person whose account posted this, or the person the video is about if they never speak). If it is genuinely one person, return a single entry.
+- castNote: ONE sentence, max 30 words, on what a client needs in order to rebuild this — especially if the format REQUIRES a second real person ("this only works with a genuine call from someone who actually knows you; casting a stand-in reads as fake instantly"). null for a straightforward solo piece.
+- whyItWorks: an object explaining the mechanism. Be specific to this video, never generic. Every field except immutable is ONE sentence, max 35 words — name the mechanism, don't elaborate on it:
   - visual: what the viewer SEES that stops the scroll and keeps them there — the setting, the contrast between setting and subject, what the frame implies about the person's life.
   - verbal: what is said and how it is constructed — word choice, specificity, the shape of the sentences, what is stated versus implied.
   - emotional: what the viewer FEELS and why that makes them stay, save or send it. Name the emotion plainly (envy, pride, relief, vindication, tenderness, aspiration).
   - curiosityLoop: the open loop — what question the opening plants, how long it is held before the payoff, and whether a second loop opens before the first closes. Quote the line that opens it and the line that closes it.
-  - immutable: THE MOST IMPORTANT FIELD. What worked here ONLY because of who this specific creator is, and cannot be borrowed by anyone else — their actual revenue number, their age relative to that number, the real relationship on the call, credentials or a track record they have and the viewer doesn't. Be blunt and specific ("a 19-year-old saying 88K lands because of the age-to-number gap; a 35-year-old saying the same number is unremarkable"). Then say what a different creator should put in that slot instead — the equivalent true thing for them.
+  - immutable: THE MOST IMPORTANT FIELD. What worked here ONLY because of who this specific creator is, and cannot be borrowed by anyone else — their actual revenue number, their age relative to that number, the real relationship on the call, credentials or a track record they have and the viewer doesn't. Be blunt and specific ("a 19-year-old saying 88K lands because of the age-to-number gap; a 35-year-old saying the same number is unremarkable"). Then say what a different creator should put in that slot instead — the equivalent true thing for them. Max 60 words; this is the one field allowed to run long.
 - contentFormat: a short label for the format itself, the way an editor would name it — for example "Green Screen / Image Overlay Talking Head", "Two-Hander Phone Call", "Static Talking Head + B-roll Cutaways". 3-7 words.
 - title: a short name for this SOP (under 60 characters) — name the FORMAT, not this video's specific story, since other creators will rebuild it with their own content.
 - prep: 3-4 things to do before filming or opening the editor. If the format needs a second person, say so here first.
-- wardrobe: what THE CREATOR (the isCreator person) should WEAR for this format and why it fits the message — be specific about the register (loose vacation fit vs. clean fitted basics vs. gym clothes), and say what to avoid. 1-3 sentences. null only if genuinely nothing about the outfit matters.
-- setting: where to shoot it and what the background should signal — the vibe it needs to give off (quiet and expensive, lived-in and real, busy and public, outdoors and free), plus framing and lighting. Say what would break the illusion. 1-3 sentences.
-- energy: the overall energy the creator should carry through the whole video in one or two sentences — is this calm and understated, hyped and fast, conspiratorial and quiet, warm and vulnerable? Name it plainly.
+- wardrobe: what THE CREATOR (the isCreator person) should WEAR and why it fits the message — be specific about the register (loose vacation fit vs. clean fitted basics vs. gym clothes), and say what to avoid. Max 2 sentences, 40 words. null only if genuinely nothing about the outfit matters.
+- setting: where to shoot it and what the background should signal — the vibe it needs to give off (quiet and expensive, lived-in and real, busy and public, outdoors and free), plus framing and lighting. Say what would break the illusion. Max 2 sentences, 40 words.
+- energy: the overall energy the creator should carry through the whole video, one sentence, max 25 words — is this calm and understated, hyped and fast, conspiratorial and quiet, warm and vulnerable? Name it plainly.
 - tonality: an array of per-beat delivery directions covering the whole video in order. Each has "speaker" (the exact "role" string from cast — WHO SAYS THIS LINE; never attribute another person's line to the creator), "section" (the beat, e.g. "Hook", "The reveal", or a short quote of the line) and "direction" (how it should land — name the emotional register plainly: sad, excited, deadpan, urgent, calm, amused, conspiratorial; plus pace: slow, fast, normal; plus where to pause or punch a word). 4-5 entries. For a line the creator does not say, write the direction as what the creator should REACT with or elicit, not as something they perform.
 - hook: 4-5 instructions for building the opening 3 seconds specifically — what is on screen, how the title text is sized and styled relative to captions, how long it holds, when the first cut lands.
 - editing: 5-6 instructions for the main edit pass — clip order, cutting pauses, caption style and word count on screen, when to change visuals, speaker sizing and framing, audio and colour consistency.
@@ -309,49 +372,35 @@ Produce:
 - avoid: 5-6 short "Don't ..." lines. Concrete mistakes that break this format specifically, not generic editing advice.
 - resources: 2-3 short lines naming what the editor needs and the review workflow — where assets come from, what to compare the edit against, who reviews before it goes to the client. Do not invent URLs.
 
-Write every list bullet (prep, hook, editing, alwaysDo, avoid, resources) as an imperative instruction under 25 words. wardrobe, setting and energy are short prose, not lists. Be concrete everywhere — "loose linen shirt, no logos" beats "dress casually", "quiet room, warm lamp, no overhead light" beats "good lighting".
+Write every list bullet (prep, hook, editing, alwaysDo, avoid, resources) as an imperative instruction under 16 words. Terse and specific beats complete sentences. wardrobe, setting and energy are short prose, not lists. Be concrete everywhere — "loose linen shirt, no logos" beats "dress casually", "quiet room, warm lamp, no overhead light" beats "good lighting".
 
-Do all of the reasoning above silently. Do not narrate your speaker analysis or explain your choices — none of that belongs in the output. Every field must be a single pass, no drafting.
+Do all of the reasoning above silently. Do not narrate your speaker analysis or explain your choices — none of that belongs in the output.
 
-Your reply has already been started with an opening brace. Continue the JSON object from there and emit nothing else — no fences, no commentary before or after. Shape:
-{"cast":[{"role":"...","whoTheyAre":"...","isCreator":true}],"castNote":"..." | null,"whyItWorks":{"visual":"...","verbal":"...","emotional":"...","curiosityLoop":"...","immutable":"..."},"contentFormat":"...","title":"...","prep":["..."],"wardrobe":"..." | null,"setting":"..." | null,"energy":"..." | null,"tonality":[{"speaker":"...","section":"...","direction":"..."}],"hook":["..."],"editing":["..."],"alwaysDo":["..."],"avoid":["..."],"resources":["..."]}`;
+Record the result by calling the write_format_sop tool.`;
 
-  // Streamed rather than a plain create: the document now carries the cast
-  // breakdown and the five-part viral analysis on top of the editing spec,
-  // which lands around 3k tokens. The SDK refuses long non-streaming
-  // requests, and streaming also means a slow generation fails on our terms
-  // instead of the platform cutting the response mid-flight.
-  // Prefilled with "{" so the reply starts inside the JSON object. Asking
-  // the model to work out who is speaking before it writes made it narrate
-  // that reasoning first — a few hundred tokens of preamble that pushed the
-  // whole generation past the 60s function limit and produced nothing. The
-  // prefill removes the option; the reasoning still happens, it just isn't
-  // spent on output.
+  // Forced tool use rather than "reply with JSON". Asking the model to work
+  // out who is speaking before writing made it narrate that analysis first —
+  // hundreds of tokens of preamble that bought nothing and pushed the
+  // generation past the 60s function limit, producing no SOP at all. A
+  // forced tool call can't carry a preamble and can't come back misshapen,
+  // so the schema below is also the validation. (Assistant prefill, the
+  // other way to force this, is rejected outright by this model.)
   const message = await anthropic.messages
     .stream({
       model: "claude-sonnet-4-6",
       max_tokens: 3000,
-      messages: [
-        { role: "user", content: prompt },
-        { role: "assistant", content: "{" },
-      ],
+      tools: [{ name: "write_format_sop", description: "Record the Format SOP.", input_schema: FORMAT_SOP_SCHEMA as any }],
+      tool_choice: { type: "tool", name: "write_format_sop" },
+      messages: [{ role: "user", content: prompt }],
     })
     .finalMessage();
-  const raw = "{" + message.content.filter((b) => b.type === "text").map((b) => (b as any).text).join("\n");
 
-  // The prompt asks for bare JSON, but it also asks for a chunk of reasoning
-  // about who is speaking first — and a model that has just been told to
-  // reason will sometimes show that work above the object. Slicing to the
-  // outermost braces tolerates a preamble (and stray fences) instead of
-  // throwing away a perfectly good spec.
-  let spec: FormatSpec;
-  const cleaned = raw.replace(/```json|```/g, "").trim();
-  const jsonText = cleaned.slice(cleaned.indexOf("{"), cleaned.lastIndexOf("}") + 1);
-  try {
-    spec = JSON.parse(jsonText);
-  } catch {
-    return NextResponse.json({ error: "Claude returned malformed JSON — try again" }, { status: 502 });
+  const toolUse = message.content.find((b) => b.type === "tool_use");
+  if (!toolUse) {
+    return NextResponse.json({ error: "That came back empty — try again." }, { status: 502 });
   }
+  const spec = (toolUse as any).input as FormatSpec;
+
   if (bullets(spec.alwaysDo).length === 0 && bullets(spec.editing).length === 0) {
     return NextResponse.json({ error: "The format spec came back empty — try again" }, { status: 502 });
   }
