@@ -243,3 +243,57 @@ export function buildAccountabilityEmbed(input: AccountabilityEmbedInput) {
     footer: { text: "Creator Launchpad · Weekly Check-In" },
   };
 }
+
+export interface DiscordMessage {
+  id: string;
+  channelId: string;
+  authorName: string;
+  content: string;
+  createdAt: string;
+  // Any image the post carried — attached file first, then an embed image
+  // or thumbnail. Brand posts usually attach the creative or a Notion card.
+  imageUrl: string | null;
+  // Embed text is often where the actual pay table lives, so it's folded in
+  // rather than dropped.
+  embedText: string;
+}
+
+// Reads recent messages from a channel the bot can see. Used by the brand
+// deal sync — deals are posted as freeform messages, so this is the raw
+// material, not a structured feed.
+export async function fetchChannelMessages(channelId: string, limit = 30): Promise<DiscordMessage[]> {
+  const token = process.env.DISCORD_BOT_TOKEN;
+  if (!token) throw new Error("DISCORD_BOT_TOKEN isn't set.");
+
+  const res = await fetch(`${DISCORD_API}/channels/${channelId}/messages?limit=${Math.min(limit, 100)}`, {
+    headers: { Authorization: `Bot ${token}` },
+  });
+  if (res.status === 403) throw new Error(`The bot can't read <#${channelId}> — give it View Channel and Read Message History.`);
+  if (!res.ok) throw new Error(`Discord returned ${res.status} reading <#${channelId}>`);
+
+  const raw = await res.json();
+  if (!Array.isArray(raw)) return [];
+
+  return raw.map((m: any) => {
+    const embeds: any[] = Array.isArray(m.embeds) ? m.embeds : [];
+    const attachment = (m.attachments || []).find((a: any) => (a.content_type || "").startsWith("image/"));
+    const embedImage = embeds.map((e) => e?.image?.url || e?.thumbnail?.url).find(Boolean) || null;
+
+    return {
+      id: m.id,
+      channelId,
+      authorName: m.author?.username || "unknown",
+      content: String(m.content || ""),
+      createdAt: m.timestamp,
+      imageUrl: attachment?.url || embedImage || null,
+      embedText: embeds
+        .map((e) => [e?.title, e?.description, ...(e?.fields || []).map((f: any) => `${f.name}: ${f.value}`)].filter(Boolean).join("\n"))
+        .filter(Boolean)
+        .join("\n---\n"),
+    };
+  });
+}
+
+export function discordMessageUrl(guildId: string, channelId: string, messageId: string): string {
+  return `https://discord.com/channels/${guildId}/${channelId}/${messageId}`;
+}

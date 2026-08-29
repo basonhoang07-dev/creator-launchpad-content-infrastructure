@@ -12,8 +12,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard, DollarSign, BookOpen, CalendarDays, Plug, Film, UserCog,
-  MessageSquare, ShieldCheck, ChevronRight, LogOut, X, Trophy,
-} from "lucide-react";
+  MessageSquare, ShieldCheck, ChevronRight, LogOut, X, Trophy, Briefcase } from "lucide-react";
 import { C, WORKLOAD_LABELS } from "@/lib/theme";
 import { Logo, Avatar } from "@/components/ui";
 import { useSession } from "@/components/SessionProvider";
@@ -79,6 +78,10 @@ export default function Sidebar({
     // previewing a client — that client never sees it either.
     ...(effectiveRole === "Admin" ? [{ id: "sops", href: "/sops", label: "SOP Libraries", icon: BookOpen }] : []),
     { id: "calendar", href: "/calendar", label: "Content Calendar", icon: CalendarDays },
+    // Everyone sees the board — a deal is offered to the whole roster, and
+    // the point of it existing outside Discord is that a client who missed
+    // the post can still find it.
+    { id: "opportunities", href: "/opportunities", label: "Brand Deals", icon: Briefcase },
     ...(!isCreativeDirector ? [{ id: "integrations", href: "/integrations", label: "Integrations", icon: Plug }] : []),
   ];
   items.push({
