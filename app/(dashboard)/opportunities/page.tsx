@@ -43,6 +43,12 @@ function headlineRate(d: BrandOpportunity): { amount: string; unit: string } | n
   return null;
 }
 
+function views(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1)}M`;
+  if (n >= 1000) return `${(n / 1000).toFixed(n % 1000 === 0 ? 0 : 1)}K`;
+  return String(n);
+}
+
 function postedAgo(iso: string | null): string {
   if (!iso) return "";
   const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
@@ -361,6 +367,9 @@ export default function OpportunitiesPage() {
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                     {d.niche && <Badge tone="accent">{d.niche}</Badge>}
                     {d.postingVolume && <Badge>{d.postingVolume}</Badge>}
+                    {d.bonusTiers && d.bonusTiers.length > 0 && (
+                      <Badge tone="success">{d.bonusTiers.length} bonus tiers</Badge>
+                    )}
                   </div>
 
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: "auto", paddingTop: 4 }}>
@@ -418,6 +427,76 @@ export default function OpportunitiesPage() {
   );
 }
 
+
+// The pay block, laid out the way a creator reads it: what one post is worth,
+// how often they can post, then what that adds up to — and finally the
+// ladder, which is the part that decides whether a deal is worth chasing.
+function PayPanel({ deal }: { deal: BrandOpportunity }) {
+  const [showAll, setShowAll] = useState(false);
+  const ladder = deal.bonusTiers || [];
+  // Four is enough to show the shape of the curve without turning the panel
+  // into a table.
+  const shown = showAll ? ladder : ladder.slice(0, 4);
+  const hidden = ladder.length - shown.length;
+
+  if (!deal.basePayUsd && !deal.maxMonthlyUsd && ladder.length === 0) return null;
+
+  return (
+    <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, marginBottom: 18 }}>
+      {(deal.basePayUsd || deal.postingVolume) && (
+        <div style={{ display: "flex", gap: 16, marginBottom: deal.maxMonthlyUsd ? 16 : 0 }}>
+          {deal.basePayUsd ? (
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 10.5, color: C.textFaint, fontWeight: 600, letterSpacing: "0.05em", marginBottom: 4 }}>PER POST</div>
+              <div style={{ fontSize: 19, fontWeight: 700 }}>{money(deal.basePayUsd)}</div>
+            </div>
+          ) : null}
+          {deal.postingVolume ? (
+            <div style={{ flex: 1, borderLeft: deal.basePayUsd ? `1px solid ${C.border}` : undefined, paddingLeft: deal.basePayUsd ? 16 : 0 }}>
+              <div style={{ fontSize: 10.5, color: C.textFaint, fontWeight: 600, letterSpacing: "0.05em", marginBottom: 4 }}>FREQUENCY</div>
+              <div style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.4 }}>{deal.postingVolume}</div>
+            </div>
+          ) : null}
+        </div>
+      )}
+
+      {deal.maxMonthlyUsd ? (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ fontSize: 10.5, color: C.textFaint, fontWeight: 600, letterSpacing: "0.05em" }}>MONTHLY POTENTIAL</div>
+          <div style={{ fontSize: 26, fontWeight: 700, color: C.accentLight, letterSpacing: "-0.02em" }}>{money(deal.maxMonthlyUsd)}</div>
+        </div>
+      ) : null}
+
+      {ladder.length > 0 && (
+        <div style={{ background: C.surface2, borderRadius: 10, padding: 13, marginTop: 14 }}>
+          <div style={{ fontSize: 10.5, color: C.textFaint, fontWeight: 600, letterSpacing: "0.05em", marginBottom: 9 }}>BONUS LADDER</div>
+          <div style={{ display: "grid", gap: 7 }}>
+            {shown.map((t) => (
+              <div key={t.views} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
+                <span style={{ fontSize: 12.5, color: C.textMuted }}>{views(t.views)} views</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: C.success }}>{money(t.amountUsd)}</span>
+              </div>
+            ))}
+          </div>
+          {hidden > 0 && (
+            <button
+              onClick={() => setShowAll(true)}
+              style={{ background: "none", border: "none", padding: 0, marginTop: 9, color: C.textFaint, fontSize: 11.5, cursor: "pointer" }}
+            >
+              +{hidden} more tier{hidden === 1 ? "" : "s"}
+            </button>
+          )}
+          {/* Said once, here, because "$130 at 50K" reads as a bonus on top of
+              base pay unless you know these posts quote the total. */}
+          <div style={{ fontSize: 10.5, color: C.textFaint, marginTop: 10, lineHeight: 1.5 }}>
+            Amounts as quoted in the post — usually the total paid for a video that hits that count, not added to base pay.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DealModal({
   deal, isAdmin, onClose, onSetStatus, onDelete,
 }: {
@@ -427,7 +506,6 @@ function DealModal({
   onSetStatus: (s: "open" | "closed" | "filled") => void;
   onDelete: () => void;
 }) {
-  const rate = headlineRate(deal);
 
   const row = (label: string, value: string | null) =>
     value ? (
@@ -457,6 +535,8 @@ function DealModal({
         {deal.status !== "open" && <Badge>{deal.status === "filled" ? "Filled" : "Closed"}</Badge>}
       </div>
 
+      <PayPanel deal={deal} />
+
       {row("What you'd be doing", deal.description)}
       {row("Pay", deal.paySummary)}
       {row("Deliverables", deal.deliverables)}
@@ -478,15 +558,8 @@ function DealModal({
           borderTop: `1px solid ${C.border}`, paddingTop: 16, marginTop: 4,
         }}
       >
-        <div style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
-          {rate ? (
-            <>
-              <span style={{ fontSize: 27, fontWeight: 700, color: C.text, letterSpacing: "-0.02em" }}>{rate.amount}</span>
-              <span style={{ fontSize: 13, color: C.textFaint }}>{rate.unit}</span>
-            </>
-          ) : (
-            <span style={{ fontSize: 13, color: C.textFaint }}>Pay varies — see terms above</span>
-          )}
+        <div style={{ fontSize: 12, color: C.textFaint, lineHeight: 1.5 }}>
+          Deals are arranged directly with whoever posted them.
         </div>
 
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>

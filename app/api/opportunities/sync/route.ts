@@ -70,6 +70,18 @@ const DEAL_SCHEMA = {
           applyUrl: { type: "string", description: "Link to apply, or the brand's site. Empty if none in the post." },
           website: { type: "string", description: "Brand's domain only, e.g. makon.ai. Empty if not determinable from the post." },
           contactHandle: { type: "string", description: "Discord username the post tells creators to DM, if it names one that isn't the poster. Empty otherwise." },
+          bonusTiers: {
+            type: "array",
+            description: "The view-bonus ladder, in ascending order. Empty if the post quotes no tiers.",
+            items: {
+              type: "object",
+              properties: {
+                views: { type: "number", description: "View threshold, as a number: 1.2K is 1200." },
+                amountUsd: { type: "number", description: "Dollar amount quoted at that threshold, exactly as written." },
+              },
+              required: ["views", "amountUsd"],
+            },
+          },
         },
         required: ["messageId", "isDeal", "brand", "title", "paySummary"],
       },
@@ -102,6 +114,20 @@ function logoFor(website: string | undefined, applyUrl: string | undefined): str
 function nonEmpty(value: unknown): string | null {
   const s = typeof value === "string" ? value.trim() : "";
   return s.length > 0 ? s : null;
+}
+
+// Ascending, de-duplicated, and only rows where both numbers survived. A
+// ladder with a missing threshold or a zero payout renders as a broken row,
+// which is worse than one fewer tier.
+function tiers(value: unknown): { views: number; amountUsd: number }[] | null {
+  if (!Array.isArray(value)) return null;
+  const seen = new Set<number>();
+  const rows = value
+    .map((t: any) => ({ views: Number(t?.views), amountUsd: Number(t?.amountUsd) }))
+    .filter((t) => Number.isFinite(t.views) && t.views > 0 && Number.isFinite(t.amountUsd) && t.amountUsd > 0)
+    .filter((t) => (seen.has(t.views) ? false : (seen.add(t.views), true)))
+    .sort((a, b) => a.views - b.views);
+  return rows.length > 0 ? rows : null;
 }
 
 function positive(value: unknown): number | null {
@@ -190,6 +216,7 @@ For the real ones:
 - requirements: who qualifies — audience tier, niche, follower count, demographic asks. Verbatim where it's specific.
 - website: the brand's own domain if the post makes it determinable. Not a Notion, Discord, Google Docs or form link — leave empty rather than guessing.
 - contactHandle: only if the post explicitly tells creators to DM someone other than whoever posted it. Leave empty otherwise — the poster is assumed.
+- bonusTiers: the view-bonus ladder as rows, ascending. "1.2K = $30, 50K = $130, 1M = $730" becomes three entries. Copy the amounts EXACTLY as quoted — do not convert them into differences between tiers, and do not add tiers the post doesn't list. Empty array when there's no ladder (a flat per-video rate or a pure CPM has none).
 
 Available niches (use one exactly, or leave empty): ${NICHES.join(", ")}
 
@@ -238,6 +265,7 @@ Record everything by calling extract_deals.`;
         // has to be resolved to a username before it means anything.
         contact_discord_id: source.authorId || null,
         contact_discord_username: source.authorName,
+        bonus_tiers: tiers(d.bonusTiers),
         _contactHandle: nonEmpty(d.contactHandle),
         posted_by_profile_id: profile.id,
         source_channel_id: source.channelId,

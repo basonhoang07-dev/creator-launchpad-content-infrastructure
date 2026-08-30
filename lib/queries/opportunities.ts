@@ -25,6 +25,7 @@ export interface BrandOpportunity {
   postingVolume: string | null;
   maxPostsPerMonth: number | null;
   maxMonthlyUsd: number | null;
+  bonusTiers: { views: number; amountUsd: number }[] | null;
   deliverables: string | null;
   requirements: string | null;
   applyUrl: string | null;
@@ -50,6 +51,7 @@ function mapOpportunity(r: any): BrandOpportunity {
     postingVolume: r.posting_volume,
     maxPostsPerMonth: num(r.max_posts_per_month),
     maxMonthlyUsd: num(r.max_monthly_usd),
+    bonusTiers: Array.isArray(r.bonus_tiers) ? r.bonus_tiers : null,
     deliverables: r.deliverables,
     requirements: r.requirements,
     applyUrl: r.apply_url,
@@ -150,6 +152,7 @@ export async function createOpportunity(
       // alongside imported ones instead of falling to the bottom for want of
       // a number.
       max_monthly_usd: base && posts ? base * posts : null,
+      bonus_tiers: null,
       requirements: optional(input.requirements),
       apply_url: optional(input.applyUrl),
       contact_discord_username: optional(input.contactDiscordUsername)?.replace(/^@/, "") ?? null,
