@@ -12,7 +12,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard, DollarSign, BookOpen, CalendarDays, Plug, Film, UserCog,
-  MessageSquare, ShieldCheck, ChevronRight, LogOut, X, Trophy, Briefcase } from "lucide-react";
+  MessageSquare, ShieldCheck, ChevronRight, LogOut, X, Trophy, Briefcase, PlayCircle } from "lucide-react";
 import { C, WORKLOAD_LABELS } from "@/lib/theme";
 import { Logo, Avatar } from "@/components/ui";
 import { useSession } from "@/components/SessionProvider";
@@ -95,6 +95,9 @@ export default function Sidebar({
   }
   // effectiveRole, not profile.role — hidden while an Admin is previewing a
   // client via "Working in", same reasoning as the SOP Libraries gate above.
+  // Last in the list on purpose — it is the thing you reach for when
+  // something else on this nav confused you.
+  items.push({ id: "how-to-use", href: "/how-to-use", label: "How to use", icon: PlayCircle });
   if (effectiveRole === "Admin") items.push({ id: "admin", href: "/admin", label: "Admin Panel", icon: ShieldCheck });
 
   function handleGlobalSearchNavigate(r: SearchResult) {
