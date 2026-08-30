@@ -301,3 +301,26 @@ export async function fetchChannelMessages(channelId: string, limit = 30): Promi
 export function discordMessageUrl(guildId: string, channelId: string, messageId: string): string {
   return `https://discord.com/channels/${guildId}/${channelId}/${messageId}`;
 }
+
+// Resolves a user id to a username. Brand-deal posts often say "DM <@123…>"
+// rather than naming the person, and a raw id is useless to a creator
+// looking at a card — they need to know who they're messaging.
+export async function fetchDiscordUsername(userId: string): Promise<string | null> {
+  const token = process.env.DISCORD_BOT_TOKEN;
+  if (!token || !/^\d{15,25}$/.test(userId)) return null;
+  try {
+    const res = await fetch(`${DISCORD_API}/users/${userId}`, { headers: { Authorization: `Bot ${token}` } });
+    if (!res.ok) return null;
+    const j = await res.json();
+    return j.username || null;
+  } catch {
+    return null;
+  }
+}
+
+// "<@123>", "<@!123>" or a bare id — the shapes a mention arrives in once
+// it's been flattened to text.
+export function parseDiscordMention(value: string | undefined | null): string | null {
+  const m = String(value || "").trim().match(/^<?@?!?(\d{15,25})>?$/);
+  return m ? m[1] : null;
+}

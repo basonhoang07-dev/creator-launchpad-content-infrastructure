@@ -16,7 +16,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentProfile } from "@/lib/supabase/server";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
-import { fetchChannelMessages, discordMessageUrl, type DiscordMessage } from "@/lib/discord";
+import { fetchChannelMessages, discordMessageUrl, fetchDiscordUsername, parseDiscordMention, type DiscordMessage } from "@/lib/discord";
 import { isAnthropicConfigured, ANTHROPIC_NOT_CONFIGURED_MESSAGE } from "@/lib/anthropicStatus";
 import { NICHES } from "@/lib/theme";
 
@@ -225,11 +225,11 @@ Record everything by calling extract_deals.`;
         // The post's own image wins over a favicon — an attached brand
         // creative is a better thumbnail than a 128px icon.
         logo_url: source.imageUrl || logoFor(d.website, d.applyUrl),
-        // Who a creator actually messages to get this. Defaults to the
-        // poster, since these deals belong to campaign managers rather
-        // than to us — we are not the ones handing them out.
+        // Filled in below — the named contact may be a raw mention, which
+        // has to be resolved to a username before it means anything.
         contact_discord_id: source.authorId || null,
-        contact_discord_username: nonEmpty(d.contactHandle) || source.authorName,
+        contact_discord_username: source.authorName,
+        _contactHandle: nonEmpty(d.contactHandle),
         posted_by_profile_id: profile.id,
         source_channel_id: source.channelId,
         discord_message_id: source.id,
@@ -241,6 +241,25 @@ Record everything by calling extract_deals.`;
   if (rows.length === 0) {
     return NextResponse.json({ imported: 0, remaining, scanned: messages.length, noDealsFound: true });
   }
+
+  // Posts commonly say "DM <@1355…>" instead of naming anyone, and an id on
+  // a card tells a creator nothing. Resolve those to a username; fall back
+  // to whoever posted when the id can't be looked up.
+  await Promise.all(
+    rows.map(async (row: any) => {
+      const mentionedId = parseDiscordMention(row._contactHandle);
+      if (mentionedId) {
+        row.contact_discord_id = mentionedId;
+        row.contact_discord_username = (await fetchDiscordUsername(mentionedId)) || row.contact_discord_username;
+      } else if (row._contactHandle) {
+        // A plain @name from the post. Keep the name, but drop the poster's
+        // id — linking to the wrong person is worse than not linking.
+        row.contact_discord_username = String(row._contactHandle).replace(/^@/, "");
+        row.contact_discord_id = null;
+      }
+      delete row._contactHandle;
+    })
+  );
 
   const { data: inserted, error } = await admin
     .from("brand_opportunities")
