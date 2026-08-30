@@ -95,3 +95,70 @@ export async function removeOpportunity(supabase: SupabaseClient, id: string) {
     .eq("id", id);
   if (error) throw error;
 }
+
+export interface NewOpportunityInput {
+  brand: string;
+  title: string;
+  description: string;
+  niche: string;
+  paySummary: string;
+  basePayUsd: string;
+  postingVolume: string;
+  maxPostsPerMonth: string;
+  requirements: string;
+  applyUrl: string;
+  contactDiscordUsername: string;
+  contactDiscordId: string;
+}
+
+function optional(v: string): string | null {
+  const t = (v || "").trim();
+  return t.length > 0 ? t : null;
+}
+
+function numeric(v: string): number | null {
+  const n = Number(String(v || "").replace(/[^0-9.]/g, ""));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+// Deals added by hand: a brand that reached Akira directly rather than
+// through the channels, or one the sync misread badly enough to be worth
+// redoing. Left with a null discord_message_id, which is also what keeps
+// them out of the sync's collapse-by-brand pass.
+export async function createOpportunity(
+  supabase: SupabaseClient,
+  organizationId: string,
+  profileId: string,
+  input: NewOpportunityInput
+): Promise<BrandOpportunity> {
+  const base = numeric(input.basePayUsd);
+  const posts = numeric(input.maxPostsPerMonth);
+
+  const { data, error } = await supabase
+    .from("brand_opportunities")
+    .insert({
+      organization_id: organizationId,
+      brand: input.brand.trim(),
+      title: optional(input.title) || input.brand.trim(),
+      description: optional(input.description),
+      niche: optional(input.niche),
+      pay_summary: optional(input.paySummary),
+      base_pay_usd: base,
+      posting_volume: optional(input.postingVolume),
+      max_posts_per_month: posts,
+      // Derived the same way the sync derives it, so a hand-added deal sorts
+      // alongside imported ones instead of falling to the bottom for want of
+      // a number.
+      max_monthly_usd: base && posts ? base * posts : null,
+      requirements: optional(input.requirements),
+      apply_url: optional(input.applyUrl),
+      contact_discord_username: optional(input.contactDiscordUsername)?.replace(/^@/, "") ?? null,
+      contact_discord_id: optional(input.contactDiscordId),
+      posted_by_profile_id: profileId,
+      posted_at: new Date().toISOString(),
+    })
+    .select("*")
+    .single();
+  if (error) throw error;
+  return mapOpportunity(data);
+}

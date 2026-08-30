@@ -264,20 +264,8 @@ export interface DiscordMessage {
 // Reads recent messages from a channel the bot can see. Used by the brand
 // deal sync — deals are posted as freeform messages, so this is the raw
 // material, not a structured feed.
-export async function fetchChannelMessages(channelId: string, limit = 30): Promise<DiscordMessage[]> {
-  const token = process.env.DISCORD_BOT_TOKEN;
-  if (!token) throw new Error("DISCORD_BOT_TOKEN isn't set.");
-
-  const res = await fetch(`${DISCORD_API}/channels/${channelId}/messages?limit=${Math.min(limit, 100)}`, {
-    headers: { Authorization: `Bot ${token}` },
-  });
-  if (res.status === 403) throw new Error(`The bot can't read <#${channelId}> — give it View Channel and Read Message History.`);
-  if (!res.ok) throw new Error(`Discord returned ${res.status} reading <#${channelId}>`);
-
-  const raw = await res.json();
-  if (!Array.isArray(raw)) return [];
-
-  return raw.map((m: any) => {
+function toMessage(m: any, channelId: string): DiscordMessage {
+  {
     const embeds: any[] = Array.isArray(m.embeds) ? m.embeds : [];
     const attachment = (m.attachments || []).find((a: any) => (a.content_type || "").startsWith("image/"));
     const embedImage = embeds.map((e) => e?.image?.url || e?.thumbnail?.url).find(Boolean) || null;
@@ -295,7 +283,54 @@ export async function fetchChannelMessages(channelId: string, limit = 30): Promi
         .filter(Boolean)
         .join("\n---\n"),
     };
-  });
+  }
+}
+
+// Walks back through a channel until it passes `since`, rather than taking a
+// fixed number of messages. A busy fortnight in one channel is more than a
+// single page, and a quiet one is less — bounding by date is what the caller
+// actually means, and it keeps the extraction cost proportional to how much
+// was posted rather than to a guess.
+export async function fetchChannelMessages(
+  channelId: string,
+  options: { since?: Date; maxMessages?: number } = {}
+): Promise<DiscordMessage[]> {
+  const token = process.env.DISCORD_BOT_TOKEN;
+  if (!token) throw new Error("DISCORD_BOT_TOKEN isn't set.");
+
+  const sinceMs = options.since ? options.since.getTime() : 0;
+  const maxMessages = options.maxMessages ?? 200;
+  const collected: DiscordMessage[] = [];
+  let before: string | undefined;
+
+  while (collected.length < maxMessages) {
+    const url = new URL(`${DISCORD_API}/channels/${channelId}/messages`);
+    url.searchParams.set("limit", "100");
+    if (before) url.searchParams.set("before", before);
+
+    const res = await fetch(url, { headers: { Authorization: `Bot ${token}` } });
+    if (res.status === 403) throw new Error(`The bot can't read <#${channelId}> — give it View Channel and Read Message History.`);
+    if (!res.ok) throw new Error(`Discord returned ${res.status} reading <#${channelId}>`);
+
+    const raw = await res.json();
+    if (!Array.isArray(raw) || raw.length === 0) break;
+
+    let reachedCutoff = false;
+    for (const m of raw) {
+      if (sinceMs && new Date(m.timestamp).getTime() < sinceMs) {
+        reachedCutoff = true;
+        break;
+      }
+      collected.push(toMessage(m, channelId));
+    }
+
+    // Discord returns newest-first, so the last id of a full page is where
+    // the next one continues from.
+    before = raw[raw.length - 1]?.id;
+    if (reachedCutoff || raw.length < 100 || !before) break;
+  }
+
+  return collected;
 }
 
 export function discordMessageUrl(guildId: string, channelId: string, messageId: string): string {

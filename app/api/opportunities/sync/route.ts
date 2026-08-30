@@ -24,9 +24,15 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export const maxDuration = 60;
 
-// Read in one batch per channel. Deals arrive a few a week, so 30 covers a
-// comfortable backlog without making the extraction call enormous.
-const MESSAGES_PER_CHANNEL = 30;
+// Only the last fortnight. A brand deal older than that is almost always
+// filled or dead, and importing it just puts a stale card in front of a
+// client. Bounding by date rather than message count also means a busy
+// channel gets read properly instead of being cut off at one page.
+const DEAL_MAX_AGE_DAYS = 14;
+
+// Ceiling per channel, so an unusually noisy fortnight can't make the read
+// unbounded. Well above what these channels actually do.
+const MAX_MESSAGES_PER_CHANNEL = 200;
 
 // A deal post is substantial. Anything shorter is a reply, a reaction or a
 // "is this still open?" — filtered before it reaches the model so the
@@ -132,7 +138,10 @@ export async function POST(req: NextRequest) {
 
   let messages: DiscordMessage[] = [];
   try {
-    const batches = await Promise.all(channelIds.map((id) => fetchChannelMessages(id, MESSAGES_PER_CHANNEL)));
+    const since = new Date(Date.now() - DEAL_MAX_AGE_DAYS * 24 * 60 * 60 * 1000);
+    const batches = await Promise.all(
+      channelIds.map((id) => fetchChannelMessages(id, { since, maxMessages: MAX_MESSAGES_PER_CHANNEL }))
+    );
     messages = batches.flat();
   } catch (err: any) {
     return NextResponse.json({ error: err.message || "Couldn't read those Discord channels" }, { status: 502 });
@@ -281,10 +290,14 @@ Record everything by calling extract_deals.`;
 // so the older terms are still recoverable and the message ids stay taken,
 // which is what stops the next sync re-extracting them.
 async function collapseRepeatedBrands(admin: ReturnType<typeof createAdminSupabaseClient>, organizationId: string): Promise<number> {
+  // Only synced rows take part. A deal added by hand was a deliberate act
+  // and isn't something an import gets to overrule, even when it shares a
+  // brand with something pulled from Discord.
   const { data } = await admin
     .from("brand_opportunities")
     .select("id, brand, posted_at, created_at")
     .eq("organization_id", organizationId)
+    .not("discord_message_id", "is", null)
     .is("deleted_at", null);
 
   const newestByBrand = new Map<string, { id: string; when: string }>();

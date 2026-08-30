@@ -14,14 +14,15 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  AlertCircle, Briefcase, ExternalLink, Loader2, MessageSquare, RefreshCw, Search,
+  AlertCircle, Briefcase, ExternalLink, Loader2, MessageSquare, Plus, RefreshCw, Search, Trash2,
 } from "lucide-react";
 import { C, NICHES } from "@/lib/theme";
-import { Card, Badge, Button, EmptyState, Modal, SectionHeader, inputStyle } from "@/components/ui";
+import { Card, Badge, Button, EmptyState, Field, Modal, SectionHeader, inputStyle } from "@/components/ui";
 import { createClient } from "@/lib/supabase";
 import { useSession } from "@/components/SessionProvider";
 import {
-  fetchOpportunities, setOpportunityStatus, removeOpportunity, type BrandOpportunity,
+  fetchOpportunities, setOpportunityStatus, removeOpportunity, createOpportunity,
+  type BrandOpportunity, type NewOpportunityInput,
 } from "@/lib/queries/opportunities";
 import { useToast, toastMessage } from "@/components/Toast";
 
@@ -29,14 +30,40 @@ const ALL = "__all__";
 
 function money(n: number | null): string {
   if (!n) return "";
-  return n >= 1000 ? `$${(n / 1000).toFixed(n % 1000 === 0 ? 0 : 1)}k` : `$${Math.round(n)}`;
+  return n >= 1000 ? `${(n / 1000).toFixed(n % 1000 === 0 ? 0 : 1)}k` : `${Math.round(n)}`;
+}
+
+// The headline number, and the unit it's in. A deal quoted per-video has no
+// honest monthly figure without a cadence, so it says so rather than
+// inventing one — the two aren't interchangeable and a creator comparing
+// cards needs to know which they're looking at.
+function headlineRate(d: BrandOpportunity): { amount: string; unit: string } | null {
+  if (d.maxMonthlyUsd) return { amount: money(d.maxMonthlyUsd), unit: "/month" };
+  if (d.basePayUsd) return { amount: money(d.basePayUsd), unit: "/video" };
+  return null;
+}
+
+function postedAgo(iso: string | null): string {
+  if (!iso) return "";
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+  if (days < 1) return "today";
+  if (days === 1) return "1d ago";
+  return `${days}d ago`;
 }
 
 // Brands rarely have a usable logo, so the fallback is a monogram rather
 // than a broken image or a generic placeholder that reads as "missing".
-function BrandMark({ brand, logoUrl }: { brand: string; logoUrl: string | null }) {
+// A deterministic hue off the name means the same brand keeps the same
+// colour everywhere it appears, which is what makes a wall of them
+// scannable.
+function brandHue(brand: string): number {
+  let h = 0;
+  for (let i = 0; i < brand.length; i++) h = (h * 31 + brand.charCodeAt(i)) % 360;
+  return h;
+}
+
+function BrandMark({ brand, logoUrl, size = 44 }: { brand: string; logoUrl: string | null; size?: number }) {
   const [failed, setFailed] = useState(false);
-  const size = 44;
 
   if (logoUrl && !failed) {
     return (
@@ -44,18 +71,53 @@ function BrandMark({ brand, logoUrl }: { brand: string; logoUrl: string | null }
         src={logoUrl}
         alt=""
         onError={() => setFailed(true)}
-        style={{ width: size, height: size, borderRadius: 10, objectFit: "cover", background: C.surface3, flexShrink: 0 }}
+        style={{ width: size, height: size, borderRadius: size / 4, objectFit: "cover", background: C.surface3, flexShrink: 0 }}
       />
     );
   }
   return (
     <div
       style={{
-        width: size, height: size, borderRadius: 10, background: C.accentDim, color: C.accentLight,
-        display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 17, flexShrink: 0,
+        width: size, height: size, borderRadius: size / 4,
+        background: `hsl(${brandHue(brand)}, 45%, 22%)`, color: `hsl(${brandHue(brand)}, 70%, 78%)`,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontWeight: 700, fontSize: size * 0.4, flexShrink: 0,
       }}
     >
       {(brand || "?").trim().charAt(0).toUpperCase()}
+    </div>
+  );
+}
+
+// The card's header image. Posts that attach a creative give a real banner;
+// everything else gets the brand's own colour with its mark centred, which
+// still reads as that brand rather than as a missing image.
+function BrandBanner({ brand, logoUrl }: { brand: string; logoUrl: string | null }) {
+  const [failed, setFailed] = useState(false);
+  const hue = brandHue(brand);
+  // A favicon is 128px of icon — stretching it across a banner looks broken,
+  // so only a genuine attachment is used as artwork.
+  const isArtwork = !!logoUrl && !logoUrl.includes("google.com/s2/favicons");
+
+  if (isArtwork && !failed) {
+    return (
+      <img
+        src={logoUrl!}
+        alt=""
+        onError={() => setFailed(true)}
+        style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+      />
+    );
+  }
+  return (
+    <div
+      style={{
+        width: "100%", height: "100%",
+        background: `linear-gradient(135deg, hsl(${hue}, 42%, 20%), hsl(${(hue + 40) % 360}, 38%, 13%))`,
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}
+    >
+      <BrandMark brand={brand} logoUrl={logoUrl} size={52} />
     </div>
   );
 }
@@ -64,7 +126,7 @@ function BrandMark({ brand, logoUrl }: { brand: string; logoUrl: string | null }
 // The whole point of the board for a client: which human to message. These
 // deals belong to the campaign managers who posted them, so applying means
 // DMing that person on Discord — a link, not a button that only tells us.
-function DmContact({ deal }: { deal: BrandOpportunity }) {
+function DmContact({ deal, large = false }: { deal: BrandOpportunity; large?: boolean }) {
   if (!deal.contactDiscordUsername) return null;
 
   const label = `DM @${deal.contactDiscordUsername}`;
@@ -73,25 +135,22 @@ function DmContact({ deal }: { deal: BrandOpportunity }) {
   // it as text so the client can still search for them.
   if (!deal.contactDiscordId) {
     return (
-      <span style={{ fontSize: 11.5, color: C.textMuted, display: "flex", alignItems: "center", gap: 5 }}>
-        <MessageSquare size={12} /> {label} on Discord
+      <span style={{ fontSize: large ? 13 : 11.5, color: C.textMuted, display: "flex", alignItems: "center", gap: 5 }}>
+        <MessageSquare size={large ? 14 : 12} /> {label} on Discord
       </span>
     );
   }
   return (
-    <a
-      href={`https://discord.com/users/${deal.contactDiscordId}`}
-      target="_blank"
-      rel="noopener noreferrer"
-      style={{ textDecoration: "none" }}
-    >
-      <Button size="sm"><MessageSquare size={12} /> {label}</Button>
+    <a href={`https://discord.com/users/${deal.contactDiscordId}`} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>
+      <Button size={large ? "md" : "sm"} style={large ? { padding: "11px 22px", fontSize: 14, borderRadius: 999 } : undefined}>
+        <MessageSquare size={large ? 15 : 12} /> {label}
+      </Button>
     </a>
   );
 }
 
 export default function OpportunitiesPage() {
-  const { effectiveRole } = useSession();
+  const { profile, effectiveRole } = useSession();
   const { showToast } = useToast();
   const isAdmin = effectiveRole === "Admin";
 
@@ -101,6 +160,7 @@ export default function OpportunitiesPage() {
   const [showClosed, setShowClosed] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [viewing, setViewing] = useState<BrandOpportunity | null>(null);
+  const [adding, setAdding] = useState(false);
   const [error, setError] = useState("");
 
   const reload = useCallback(async () => {
@@ -168,6 +228,12 @@ export default function OpportunitiesPage() {
     }
   }
 
+  async function addDeal(input: NewOpportunityInput) {
+    await createOpportunity(createClient(), profile.organization_id, profile.id, input);
+    setAdding(false);
+    reload();
+  }
+
   async function deleteDeal(deal: BrandOpportunity) {
     try {
       await removeOpportunity(createClient(), deal.id);
@@ -189,10 +255,13 @@ export default function OpportunitiesPage() {
         title="Brand Deals"
         action={
           isAdmin ? (
-            <Button size="sm" variant="secondary" onClick={runSync} disabled={syncing}>
-              {syncing ? <Loader2 size={13} className="cl-spin" /> : <RefreshCw size={13} />}
-              {syncing ? "Reading Discord..." : "Sync from Discord"}
-            </Button>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+              <Button size="sm" onClick={() => setAdding(true)}><Plus size={13} /> Add a deal</Button>
+              <Button size="sm" variant="secondary" onClick={runSync} disabled={syncing}>
+                {syncing ? <Loader2 size={13} className="cl-spin" /> : <RefreshCw size={13} />}
+                {syncing ? "Reading Discord..." : "Sync from Discord"}
+              </Button>
+            </div>
           ) : undefined
         }
       />
@@ -250,42 +319,70 @@ export default function OpportunitiesPage() {
           }
         />
       ) : (
-        <div style={{ display: "grid", gap: 10 }}>
+        <div style={{ display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fill, minmax(290px, 1fr))" }}>
           {filtered.map((d) => {
+            const rate = headlineRate(d);
             return (
-              <Card key={d.id} style={{ padding: 14, display: "flex", gap: 13, alignItems: "flex-start" }}>
-                <BrandMark brand={d.brand} logoUrl={d.logoUrl} />
+              <Card key={d.id} style={{ padding: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+                {/* Banner. The money sits on top of it, because it's the one
+                    thing a creator scans for before reading anything else. */}
+                <div style={{ position: "relative", height: 132, background: C.surface3 }}>
+                  <BrandBanner brand={d.brand} logoUrl={d.logoUrl} />
+                  {rate && (
+                    <div
+                      style={{
+                        position: "absolute", top: 10, right: 10,
+                        background: "#fff", color: "#111", borderRadius: 999,
+                        padding: "6px 13px", fontSize: 13, fontWeight: 700,
+                        boxShadow: "0 2px 10px rgba(0,0,0,0.35)", whiteSpace: "nowrap",
+                      }}
+                    >
+                      {rate.amount}
+                      <span style={{ fontWeight: 500, opacity: 0.65 }}>{rate.unit}</span>
+                    </div>
+                  )}
+                  {d.status !== "open" && (
+                    <div style={{ position: "absolute", top: 10, left: 10 }}>
+                      <Badge>{d.status === "filled" ? "Filled" : "Closed"}</Badge>
+                    </div>
+                  )}
+                </div>
 
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", marginBottom: 4 }}>
-                    <span style={{ fontSize: 14, fontWeight: 600 }}>{d.brand}</span>
-                    {d.niche && <Badge tone="accent">{d.niche}</Badge>}
-                    {d.status !== "open" && <Badge>{d.status === "filled" ? "Filled" : "Closed"}</Badge>}
-                    {/* The number that decides whether it's worth their time. */}
-                    {d.maxMonthlyUsd ? (
-                      <Badge tone="success">up to {money(d.maxMonthlyUsd)}/mo</Badge>
-                    ) : d.basePayUsd ? (
-                      <Badge tone="success">{money(d.basePayUsd)}/video</Badge>
-                    ) : null}
+                <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 9, flex: 1 }}>
+                  <div
+                    style={{
+                      fontSize: 14, fontWeight: 600, lineHeight: 1.4, color: C.text,
+                      display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
+                    }}
+                  >
+                    {d.title}
                   </div>
 
-                  <div style={{ fontSize: 12.5, color: C.text, lineHeight: 1.5, marginBottom: 6 }}>{d.title}</div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {d.niche && <Badge tone="accent">{d.niche}</Badge>}
+                    {d.postingVolume && <Badge>{d.postingVolume}</Badge>}
+                  </div>
 
-                  {d.paySummary && (
-                    <div style={{ fontSize: 11.5, color: C.textMuted, lineHeight: 1.55, marginBottom: 8 }}>{d.paySummary}</div>
-                  )}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: "auto", paddingTop: 4 }}>
+                    <BrandMark brand={d.brand} logoUrl={d.logoUrl} size={22} />
+                    <span style={{ fontSize: 12, color: C.textMuted, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {d.brand}
+                    </span>
+                    <span style={{ fontSize: 11, color: C.textFaint }}>{postedAgo(d.postedAt)}</span>
+                  </div>
 
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                    <Button size="sm" variant="secondary" onClick={() => setViewing(d)}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <Button size="sm" variant="secondary" onClick={() => setViewing(d)} style={{ flex: 1 }}>
                       Details
                     </Button>
-
-                    <DmContact deal={d} />
-
-                    {d.discordMessageUrl && (
-                      <a href={d.discordMessageUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11.5, color: C.textFaint, display: "flex", alignItems: "center", gap: 4, textDecoration: "none" }}>
-                        <MessageSquare size={11} /> Original post
-                      </a>
+                    {isAdmin && (
+                      <button
+                        onClick={() => deleteDeal(d)}
+                        title="Remove this deal"
+                        style={{ background: "none", border: "none", color: C.textFaint, cursor: "pointer", padding: 4 }}
+                      >
+                        <Trash2 size={13} />
+                      </button>
                     )}
                   </div>
                 </div>
@@ -293,6 +390,13 @@ export default function OpportunitiesPage() {
             );
           })}
         </div>
+      )}
+
+      {adding && (
+        <AddDealModal
+          onClose={() => setAdding(false)}
+          onCreate={addDeal}
+        />
       )}
 
       {viewing && (
@@ -317,52 +421,93 @@ function DealModal({
   onSetStatus: (s: "open" | "closed" | "filled") => void;
   onDelete: () => void;
 }) {
+  const rate = headlineRate(deal);
+
   const row = (label: string, value: string | null) =>
     value ? (
-      <div style={{ marginBottom: 14 }}>
-        <div style={{ fontSize: 11, color: C.textFaint, fontWeight: 600, marginBottom: 4 }}>{label}</div>
-        <div style={{ fontSize: 13, color: C.text, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{value}</div>
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 11, color: C.textFaint, fontWeight: 600, marginBottom: 5, letterSpacing: "0.03em" }}>
+          {label.toUpperCase()}
+        </div>
+        <div style={{ fontSize: 13.5, color: C.text, lineHeight: 1.65, whiteSpace: "pre-wrap" }}>{value}</div>
       </div>
     ) : null;
 
   return (
-    <Modal onClose={onClose} title={deal.brand}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
-        <BrandMark brand={deal.brand} logoUrl={deal.logoUrl} />
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.4 }}>{deal.title}</div>
-          {deal.niche && <div style={{ fontSize: 11.5, color: C.textFaint, marginTop: 2 }}>{deal.niche}</div>}
+    <Modal onClose={onClose} title={deal.brand} width={580}>
+      <div style={{ display: "flex", alignItems: "center", gap: 11, marginBottom: 14 }}>
+        <BrandMark brand={deal.brand} logoUrl={deal.logoUrl} size={40} />
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>{deal.brand}</div>
+          <div style={{ fontSize: 11.5, color: C.textFaint }}>{postedAgo(deal.postedAt)}</div>
         </div>
       </div>
 
-      {row("What it is", deal.description)}
+      <div style={{ fontSize: 18, fontWeight: 700, lineHeight: 1.35, marginBottom: 8 }}>{deal.title}</div>
+
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 18 }}>
+        {deal.niche && <Badge tone="accent">{deal.niche}</Badge>}
+        {deal.postingVolume && <Badge>{deal.postingVolume}</Badge>}
+        {deal.status !== "open" && <Badge>{deal.status === "filled" ? "Filled" : "Closed"}</Badge>}
+      </div>
+
+      {row("What you'd be doing", deal.description)}
       {row("Pay", deal.paySummary)}
-      {deal.maxMonthlyUsd ? (
-        <div style={{ marginBottom: 14, fontSize: 12.5, color: C.success }}>
-          Around {money(deal.maxMonthlyUsd)}/month at {deal.postingVolume || "the stated volume"}
-          {deal.maxPostsPerMonth ? ` (~${deal.maxPostsPerMonth} posts)` : ""}. Excludes view bonuses and prizes.
-        </div>
-      ) : null}
-      {row("Posting volume", deal.postingVolume)}
       {row("Deliverables", deal.deliverables)}
       {row("Requirements", deal.requirements)}
 
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4, alignItems: "center" }}>
-        <DmContact deal={deal} />
-        {deal.applyUrl && (
-          <a href={deal.applyUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>
-            <Button size="sm"><ExternalLink size={12} /> Apply</Button>
-          </a>
-        )}
-        {deal.discordMessageUrl && (
-          <a href={deal.discordMessageUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>
-            <Button size="sm" variant="secondary"><MessageSquare size={12} /> Original post</Button>
-          </a>
-        )}
+      {deal.maxMonthlyUsd ? (
+        <div style={{ fontSize: 12, color: C.textFaint, lineHeight: 1.6, marginBottom: 16 }}>
+          The monthly figure is base pay at {deal.postingVolume || "the stated volume"}
+          {deal.maxPostsPerMonth ? ` (~${deal.maxPostsPerMonth} posts)` : ""} — view bonuses and one-off prizes aren't
+          counted, since they don't repeat.
+        </div>
+      ) : null}
+
+      {/* The money and the way to act on it, together — a creator decides on
+          the number and then needs somewhere to go. */}
+      <div
+        style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap",
+          borderTop: `1px solid ${C.border}`, paddingTop: 16, marginTop: 4,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
+          {rate ? (
+            <>
+              <span style={{ fontSize: 27, fontWeight: 700, color: C.text, letterSpacing: "-0.02em" }}>{rate.amount}</span>
+              <span style={{ fontSize: 13, color: C.textFaint }}>{rate.unit}</span>
+            </>
+          ) : (
+            <span style={{ fontSize: 13, color: C.textFaint }}>Pay varies — see terms above</span>
+          )}
+        </div>
+
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          {deal.applyUrl && (
+            <a href={deal.applyUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>
+              <Button size="sm" variant="secondary"><ExternalLink size={12} /> Apply link</Button>
+            </a>
+          )}
+          <DmContact deal={deal} large />
+        </div>
       </div>
 
+      {deal.discordMessageUrl && (
+        <div style={{ marginTop: 12 }}>
+          <a
+            href={deal.discordMessageUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ fontSize: 11.5, color: C.textFaint, display: "inline-flex", alignItems: "center", gap: 5, textDecoration: "none" }}
+          >
+            <MessageSquare size={11} /> See the original post
+          </a>
+        </div>
+      )}
+
       {isAdmin && (
-        <div style={{ marginTop: 20, borderTop: `1px solid ${C.border}`, paddingTop: 16 }}>
+        <div style={{ marginTop: 18, borderTop: `1px solid ${C.border}`, paddingTop: 14 }}>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {deal.status !== "open" && <Button size="sm" variant="secondary" onClick={() => onSetStatus("open")}>Reopen</Button>}
             {deal.status === "open" && <Button size="sm" variant="secondary" onClick={() => onSetStatus("filled")}>Mark filled</Button>}
@@ -371,6 +516,128 @@ function DealModal({
           </div>
         </div>
       )}
+    </Modal>
+  );
+}
+
+// Hand-added deals: a brand that came to Akira directly, or one the sync
+// read badly enough to be worth redoing. Only brand is required — a deal
+// half-described is still more useful on the board than one that never got
+// added because the form asked for too much.
+function AddDealModal({
+  onClose,
+  onCreate,
+}: {
+  onClose: () => void;
+  onCreate: (input: NewOpportunityInput) => Promise<void>;
+}) {
+  const empty: NewOpportunityInput = {
+    brand: "", title: "", description: "", niche: "", paySummary: "", basePayUsd: "",
+    postingVolume: "", maxPostsPerMonth: "", requirements: "", applyUrl: "",
+    contactDiscordUsername: "", contactDiscordId: "",
+  };
+  const [form, setForm] = useState<NewOpportunityInput>(empty);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const set = (k: keyof NewOpportunityInput) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
+    setForm({ ...form, [k]: e.target.value });
+
+  async function save() {
+    if (!form.brand.trim()) return;
+    setError("");
+    setSaving(true);
+    try {
+      await onCreate(form);
+    } catch (err) {
+      setError(toastMessage(err, "Couldn't save that deal — try again."));
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal onClose={onClose} title="Add a brand deal" width={560}>
+      <div style={{ display: "grid", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <Field label="Brand">
+            <input style={inputStyle} value={form.brand} onChange={set("brand")} placeholder="Makon AI" autoFocus />
+          </Field>
+          <Field label="Niche">
+            <select style={inputStyle} value={form.niche} onChange={set("niche")}>
+              <option value="">Not set</option>
+              {NICHES.map((n) => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+          </Field>
+        </div>
+
+        <Field label="Headline">
+          <input style={inputStyle} value={form.title} onChange={set("title")} placeholder="SAT prep app — talking-head UGC" />
+        </Field>
+
+        <Field label="What it is">
+          <textarea style={{ ...inputStyle, minHeight: 60, resize: "vertical" }} value={form.description} onChange={set("description")} />
+        </Field>
+
+        <Field label="Pay terms">
+          <textarea
+            style={{ ...inputStyle, minHeight: 52, resize: "vertical" }}
+            value={form.paySummary}
+            onChange={set("paySummary")}
+            placeholder="$30 base per video, view bonuses up to $730 at 1M"
+          />
+        </Field>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+          <Field label="Base $ / video">
+            <input style={inputStyle} value={form.basePayUsd} onChange={set("basePayUsd")} placeholder="30" />
+          </Field>
+          <Field label="Posts / month">
+            <input style={inputStyle} value={form.maxPostsPerMonth} onChange={set("maxPostsPerMonth")} placeholder="60" />
+          </Field>
+          <Field label="Cadence">
+            <input style={inputStyle} value={form.postingVolume} onChange={set("postingVolume")} placeholder="1-2x/day" />
+          </Field>
+        </div>
+        <div style={{ fontSize: 11, color: C.textFaint, marginTop: -6, lineHeight: 1.5 }}>
+          Base and posts/month are multiplied into the "up to $X/mo" badge. Leave them blank if the deal isn't paid per video.
+        </div>
+
+        <Field label="Requirements">
+          <textarea style={{ ...inputStyle, minHeight: 52, resize: "vertical" }} value={form.requirements} onChange={set("requirements")} placeholder="T1 audience, study-tips niche" />
+        </Field>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <Field label="DM on Discord">
+            <input style={inputStyle} value={form.contactDiscordUsername} onChange={set("contactDiscordUsername")} placeholder="kindmarko" />
+          </Field>
+          <Field label="Their Discord ID (for the link)">
+            <input style={inputStyle} value={form.contactDiscordId} onChange={set("contactDiscordId")} placeholder="1355542830919188502" />
+          </Field>
+        </div>
+        <div style={{ fontSize: 11, color: C.textFaint, marginTop: -6, lineHeight: 1.5 }}>
+          Without an ID the name shows as text — Discord dropped discriminators, so a username alone can't be linked to.
+        </div>
+
+        <Field label="Apply link">
+          <input style={inputStyle} value={form.applyUrl} onChange={set("applyUrl")} placeholder="https://..." />
+        </Field>
+
+        {error && (
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 11.5, color: C.danger, lineHeight: 1.5 }}>
+            <AlertCircle size={12} style={{ flexShrink: 0, marginTop: 2 }} /> {error}
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <Button size="sm" variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button size="sm" onClick={save} disabled={saving || !form.brand.trim()}>
+            {saving ? <Loader2 size={12} className="cl-spin" /> : <Plus size={12} />}
+            {saving ? "Saving..." : "Add deal"}
+          </Button>
+        </div>
+      </div>
     </Modal>
   );
 }
