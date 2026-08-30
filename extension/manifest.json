@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "Creator Launchpad",
+  "version": "1.0.0",
+  "description": "Flags creators you already track while you scroll, and saves any Reel or TikTok straight into Creator Launchpad as a reference.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://creator-launchpad-content-infrastru.vercel.app/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Creator Launchpad"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.instagram.com/*",
+        "https://instagram.com/*",
+        "https://www.tiktok.com/*",
+        "https://tiktok.com/*"
+      ],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}
