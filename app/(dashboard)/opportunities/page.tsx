@@ -30,7 +30,7 @@ const ALL = "__all__";
 
 function money(n: number | null): string {
   if (!n) return "";
-  return n >= 1000 ? `${(n / 1000).toFixed(n % 1000 === 0 ? 0 : 1)}k` : `${Math.round(n)}`;
+  return n >= 1000 ? `$${(n / 1000).toFixed(n % 1000 === 0 ? 0 : 1)}k` : `$${Math.round(n)}`;
 }
 
 // The headline number, and the unit it's in. A deal quoted per-video has no
@@ -371,10 +371,16 @@ export default function OpportunitiesPage() {
                     <span style={{ fontSize: 11, color: C.textFaint }}>{postedAgo(d.postedAt)}</span>
                   </div>
 
+                  {/* The action stays on the card, not just behind Details —
+                      knowing who to message is the whole reason a client
+                      opens this page. */}
                   <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <Button size="sm" variant="secondary" onClick={() => setViewing(d)} style={{ flex: 1 }}>
+                    <Button size="sm" variant="secondary" onClick={() => setViewing(d)}>
                       Details
                     </Button>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <DmContact deal={d} />
+                    </div>
                     {isAdmin && (
                       <button
                         onClick={() => deleteDeal(d)}
