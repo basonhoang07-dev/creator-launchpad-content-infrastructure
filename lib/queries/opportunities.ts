@@ -1,19 +1,16 @@
 // lib/queries/opportunities.ts
 //
-// Brand deals and who has put their hand up for them.
+// Brand deals, read straight through RLS — every member of the org sees the
+// same board.
 //
-// Reads go straight through RLS: org members see every open deal, but
-// claims are scoped by private.has_client_access, so the same query returns
-// the whole board to an Admin and only their own row to a client. That's
-// deliberate — who else applied isn't one client's business.
-//
-// Posting a deal goes through /api/opportunities instead, because it also
-// announces to Discord with the bot token.
+// Deals arrive via /api/opportunities/sync, which reads the Discord channels
+// they're posted in; nothing here writes one. What a client does with a deal
+// happens in Discord too: the card names the person to DM, because these
+// offers belong to the campaign managers who posted them, not to us.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type OpportunityStatus = "open" | "closed" | "filled";
-export type ClaimStatus = "interested" | "applied" | "accepted" | "declined";
 
 export interface BrandOpportunity {
   id: string;
@@ -32,20 +29,12 @@ export interface BrandOpportunity {
   requirements: string | null;
   applyUrl: string | null;
   logoUrl: string | null;
+  contactDiscordId: string | null;
+  contactDiscordUsername: string | null;
   deadline: string | null;
   status: OpportunityStatus;
   discordMessageUrl: string | null;
   postedAt: string | null;
-  createdAt: string;
-}
-
-export interface OpportunityClaim {
-  id: string;
-  opportunityId: string;
-  clientId: string;
-  clientName: string;
-  status: ClaimStatus;
-  note: string | null;
   createdAt: string;
 }
 
@@ -65,6 +54,8 @@ function mapOpportunity(r: any): BrandOpportunity {
     requirements: r.requirements,
     applyUrl: r.apply_url,
     logoUrl: r.logo_url,
+    contactDiscordId: r.contact_discord_id,
+    contactDiscordUsername: r.contact_discord_username,
     deadline: r.deadline,
     status: r.status,
     discordMessageUrl: r.discord_message_url,
@@ -90,59 +81,13 @@ export async function fetchOpportunities(supabase: SupabaseClient): Promise<Bran
   return (data || []).map(mapOpportunity);
 }
 
-// Every claim the caller is allowed to see. A client gets their own rows
-// back and nothing else, so the same call powers both "am I in on this"
-// and the Admin's full applicant list.
-export async function fetchClaims(supabase: SupabaseClient): Promise<OpportunityClaim[]> {
-  const { data } = await supabase
-    .from("brand_opportunity_claims")
-    .select("id, opportunity_id, client_id, status, note, created_at, clients!inner(name)")
-    .order("created_at", { ascending: true });
-
-  return (data || []).map((r: any) => ({
-    id: r.id,
-    opportunityId: r.opportunity_id,
-    clientId: r.client_id,
-    clientName: r.clients?.name || "Unknown client",
-    status: r.status,
-    note: r.note,
-    createdAt: r.created_at,
-  }));
-}
-
-export async function claimOpportunity(
-  supabase: SupabaseClient,
-  opportunityId: string,
-  clientId: string,
-  profileId: string,
-  note: string | null
-) {
-  const { data, error } = await supabase
-    .from("brand_opportunity_claims")
-    .insert({ opportunity_id: opportunityId, client_id: clientId, profile_id: profileId, note })
-    .select("id")
-    .single();
-  if (error) throw error;
-  return data;
-}
-
-export async function withdrawClaim(supabase: SupabaseClient, claimId: string) {
-  const { error } = await supabase.from("brand_opportunity_claims").delete().eq("id", claimId);
-  if (error) throw error;
-}
-
-export async function setClaimStatus(supabase: SupabaseClient, claimId: string, status: ClaimStatus) {
-  const { error } = await supabase.from("brand_opportunity_claims").update({ status }).eq("id", claimId);
-  if (error) throw error;
-}
-
 export async function setOpportunityStatus(supabase: SupabaseClient, id: string, status: OpportunityStatus) {
   const { error } = await supabase.from("brand_opportunities").update({ status }).eq("id", id);
   if (error) throw error;
 }
 
-// Soft-deleted so a deal that's been claimed keeps its history rather than
-// cascading those rows away.
+// Soft-deleted, so a deal removed from the board keeps its Discord message
+// id — which is what stops the next sync importing it all over again.
 export async function removeOpportunity(supabase: SupabaseClient, id: string) {
   const { error } = await supabase
     .from("brand_opportunities")

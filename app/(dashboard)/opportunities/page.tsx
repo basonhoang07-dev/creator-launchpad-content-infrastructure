@@ -7,23 +7,21 @@
 // that they scroll away — a client offline when one lands never sees it,
 // and nobody has a record of who put their hand up.
 //
-// One board for everyone: the same deals, the same order. What differs by
-// role is the action. A client says they're interested; an Admin sees who
-// did, and runs the sync.
+// One board for everyone: the same deals, the same order. What a client
+// does next happens back in Discord — the card names the person who posted
+// the deal, because these offers belong to the campaign managers running
+// them, not to us. Admin additionally runs the sync and can retire a deal.
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  AlertCircle, Briefcase, Check, ExternalLink, Loader2, MessageSquare, RefreshCw, Search, Users, X,
+  AlertCircle, Briefcase, ExternalLink, Loader2, MessageSquare, RefreshCw, Search,
 } from "lucide-react";
 import { C, NICHES } from "@/lib/theme";
 import { Card, Badge, Button, EmptyState, Modal, SectionHeader, inputStyle } from "@/components/ui";
 import { createClient } from "@/lib/supabase";
 import { useSession } from "@/components/SessionProvider";
-import { useDefaultScopedClientId } from "@/components/useDefaultClient";
 import {
-  fetchOpportunities, fetchClaims, claimOpportunity, withdrawClaim, setClaimStatus,
-  setOpportunityStatus, removeOpportunity,
-  type BrandOpportunity, type OpportunityClaim, type ClaimStatus,
+  fetchOpportunities, setOpportunityStatus, removeOpportunity, type BrandOpportunity,
 } from "@/lib/queries/opportunities";
 import { useToast, toastMessage } from "@/components/Toast";
 
@@ -62,49 +60,57 @@ function BrandMark({ brand, logoUrl }: { brand: string; logoUrl: string | null }
   );
 }
 
+
+// The whole point of the board for a client: which human to message. These
+// deals belong to the campaign managers who posted them, so applying means
+// DMing that person on Discord — a link, not a button that only tells us.
+function DmContact({ deal }: { deal: BrandOpportunity }) {
+  if (!deal.contactDiscordUsername) return null;
+
+  const label = `DM @${deal.contactDiscordUsername}`;
+  // Without an id there is nothing to link to — Discord dropped
+  // discriminators, so a bare username no longer resolves to a person. Show
+  // it as text so the client can still search for them.
+  if (!deal.contactDiscordId) {
+    return (
+      <span style={{ fontSize: 11.5, color: C.textMuted, display: "flex", alignItems: "center", gap: 5 }}>
+        <MessageSquare size={12} /> {label} on Discord
+      </span>
+    );
+  }
+  return (
+    <a
+      href={`https://discord.com/users/${deal.contactDiscordId}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      style={{ textDecoration: "none" }}
+    >
+      <Button size="sm"><MessageSquare size={12} /> {label}</Button>
+    </a>
+  );
+}
+
 export default function OpportunitiesPage() {
-  const { profile, effectiveRole } = useSession();
+  const { effectiveRole } = useSession();
   const { showToast } = useToast();
-  const clientId = useDefaultScopedClientId();
   const isAdmin = effectiveRole === "Admin";
 
   const [deals, setDeals] = useState<BrandOpportunity[] | null>(null);
-  const [claims, setClaims] = useState<OpportunityClaim[]>([]);
   const [search, setSearch] = useState("");
   const [niche, setNiche] = useState(ALL);
   const [showClosed, setShowClosed] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [claimingId, setClaimingId] = useState<string | null>(null);
   const [viewing, setViewing] = useState<BrandOpportunity | null>(null);
   const [error, setError] = useState("");
 
   const reload = useCallback(async () => {
     const supabase = createClient();
-    const [d, c] = await Promise.all([fetchOpportunities(supabase), fetchClaims(supabase)]);
-    setDeals(d);
-    setClaims(c);
+    setDeals(await fetchOpportunities(supabase));
   }, []);
 
   useEffect(() => {
     reload();
   }, [reload]);
-
-  // Claims come back already scoped by RLS: a client only ever sees their
-  // own rows, so this map is "who's in" for an Admin and "am I in" for
-  // everyone else, from the same query.
-  const claimsByDeal = useMemo(() => {
-    const m = new Map<string, OpportunityClaim[]>();
-    claims.forEach((c) => {
-      if (!m.has(c.opportunityId)) m.set(c.opportunityId, []);
-      m.get(c.opportunityId)!.push(c);
-    });
-    return m;
-  }, [claims]);
-
-  const myClaim = useCallback(
-    (dealId: string) => (clientId ? (claimsByDeal.get(dealId) || []).find((c) => c.clientId === clientId) : undefined),
-    [claimsByDeal, clientId]
-  );
 
   const niches = useMemo(() => {
     const s = new Set<string>();
@@ -153,32 +159,6 @@ export default function OpportunitiesPage() {
     }
   }
 
-  async function toggleInterest(deal: BrandOpportunity) {
-    if (!clientId) return;
-    setError("");
-    setClaimingId(deal.id);
-    const existing = myClaim(deal.id);
-    try {
-      const supabase = createClient();
-      if (existing) await withdrawClaim(supabase, existing.id);
-      else await claimOpportunity(supabase, deal.id, clientId, profile.id, null);
-      await reload();
-    } catch (err) {
-      setError(toastMessage(err, "Couldn't update that — try again."));
-    } finally {
-      setClaimingId(null);
-    }
-  }
-
-  async function updateClaim(claimId: string, status: ClaimStatus) {
-    try {
-      await setClaimStatus(createClient(), claimId, status);
-      reload();
-    } catch (err) {
-      showToast(toastMessage(err, "Couldn't update that applicant."));
-    }
-  }
-
   async function closeDeal(deal: BrandOpportunity, status: "open" | "closed" | "filled") {
     try {
       await setOpportunityStatus(createClient(), deal.id, status);
@@ -221,7 +201,7 @@ export default function OpportunitiesPage() {
         <div style={{ fontSize: 11.5, color: C.textFaint, marginBottom: 12, lineHeight: 1.6 }}>
           {isAdmin
             ? "Deals pulled out of your campaign-managers and community-deals channels. Sync reads the recent posts, keeps the real offers, and skips the chatter — running it again won't duplicate anything."
-            : "Brand deals open to you right now. Tap I'm interested and Akira will see you're in — no need to catch the Discord post in time."}
+            : "Brand deals open to you right now. Each one names the person to DM on Discord to put yourself forward — no need to have caught the original post."}
         </div>
 
         <div style={{ position: "relative", marginBottom: 10 }}>
@@ -272,8 +252,6 @@ export default function OpportunitiesPage() {
       ) : (
         <div style={{ display: "grid", gap: 10 }}>
           {filtered.map((d) => {
-            const mine = myClaim(d.id);
-            const interested = claimsByDeal.get(d.id) || [];
             return (
               <Card key={d.id} style={{ padding: 14, display: "flex", gap: 13, alignItems: "flex-start" }}>
                 <BrandMark brand={d.brand} logoUrl={d.logoUrl} />
@@ -302,21 +280,7 @@ export default function OpportunitiesPage() {
                       Details
                     </Button>
 
-                    {!isAdmin && d.status === "open" && (
-                      <Button size="sm" onClick={() => toggleInterest(d)} disabled={claimingId === d.id || !clientId}>
-                        {claimingId === d.id ? <Loader2 size={12} className="cl-spin" /> : mine ? <Check size={12} /> : null}
-                        {mine ? "You're in" : "I'm interested"}
-                      </Button>
-                    )}
-
-                    {isAdmin && (
-                      <span style={{ fontSize: 11.5, color: interested.length ? C.accentLight : C.textFaint, display: "flex", alignItems: "center", gap: 5 }}>
-                        <Users size={12} />
-                        {interested.length === 0
-                          ? "Nobody yet"
-                          : `${interested.length} interested — ${interested.map((c) => c.clientName).join(", ")}`}
-                      </span>
-                    )}
+                    <DmContact deal={d} />
 
                     {d.discordMessageUrl && (
                       <a href={d.discordMessageUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11.5, color: C.textFaint, display: "flex", alignItems: "center", gap: 4, textDecoration: "none" }}>
@@ -335,11 +299,9 @@ export default function OpportunitiesPage() {
         <DealModal
           deal={viewing}
           isAdmin={isAdmin}
-          claims={claimsByDeal.get(viewing.id) || []}
           onClose={() => setViewing(null)}
           onSetStatus={(s) => closeDeal(viewing, s)}
           onDelete={() => deleteDeal(viewing)}
-          onUpdateClaim={updateClaim}
         />
       )}
     </div>
@@ -347,15 +309,13 @@ export default function OpportunitiesPage() {
 }
 
 function DealModal({
-  deal, isAdmin, claims, onClose, onSetStatus, onDelete, onUpdateClaim,
+  deal, isAdmin, onClose, onSetStatus, onDelete,
 }: {
   deal: BrandOpportunity;
   isAdmin: boolean;
-  claims: OpportunityClaim[];
   onClose: () => void;
   onSetStatus: (s: "open" | "closed" | "filled") => void;
   onDelete: () => void;
-  onUpdateClaim: (claimId: string, status: ClaimStatus) => void;
 }) {
   const row = (label: string, value: string | null) =>
     value ? (
@@ -387,7 +347,8 @@ function DealModal({
       {row("Deliverables", deal.deliverables)}
       {row("Requirements", deal.requirements)}
 
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4, alignItems: "center" }}>
+        <DmContact deal={deal} />
         {deal.applyUrl && (
           <a href={deal.applyUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>
             <Button size="sm"><ExternalLink size={12} /> Apply</Button>
@@ -402,30 +363,6 @@ function DealModal({
 
       {isAdmin && (
         <div style={{ marginTop: 20, borderTop: `1px solid ${C.border}`, paddingTop: 16 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 10 }}>Who's interested ({claims.length})</div>
-          {claims.length === 0 ? (
-            <div style={{ fontSize: 12, color: C.textFaint }}>Nobody has put their hand up yet.</div>
-          ) : (
-            <div style={{ display: "grid", gap: 6, marginBottom: 14 }}>
-              {claims.map((c) => (
-                <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 8, background: C.surface2, borderRadius: 8, padding: "8px 10px" }}>
-                  <span style={{ fontSize: 12.5, flex: 1, minWidth: 0 }}>{c.clientName}</span>
-                  <Badge tone={c.status === "accepted" ? "success" : c.status === "declined" ? "default" : "accent"}>{c.status}</Badge>
-                  {c.status !== "accepted" && (
-                    <button onClick={() => onUpdateClaim(c.id, "accepted")} title="Accept" style={{ background: "none", border: "none", color: C.success, cursor: "pointer" }}>
-                      <Check size={14} />
-                    </button>
-                  )}
-                  {c.status !== "declined" && (
-                    <button onClick={() => onUpdateClaim(c.id, "declined")} title="Decline" style={{ background: "none", border: "none", color: C.textFaint, cursor: "pointer" }}>
-                      <X size={14} />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {deal.status !== "open" && <Button size="sm" variant="secondary" onClick={() => onSetStatus("open")}>Reopen</Button>}
             {deal.status === "open" && <Button size="sm" variant="secondary" onClick={() => onSetStatus("filled")}>Mark filled</Button>}

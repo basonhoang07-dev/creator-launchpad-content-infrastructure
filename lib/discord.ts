@@ -248,6 +248,9 @@ export interface DiscordMessage {
   id: string;
   channelId: string;
   authorName: string;
+  // Needed to build a DM link — a username alone can no longer be resolved
+  // to a person since Discord dropped discriminators.
+  authorId: string;
   content: string;
   createdAt: string;
   // Any image the post carried — attached file first, then an embed image
@@ -283,6 +286,7 @@ export async function fetchChannelMessages(channelId: string, limit = 30): Promi
       id: m.id,
       channelId,
       authorName: m.author?.username || "unknown",
+      authorId: m.author?.id || "",
       content: String(m.content || ""),
       createdAt: m.timestamp,
       imageUrl: attachment?.url || embedImage || null,

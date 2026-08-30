@@ -63,6 +63,7 @@ const DEAL_SCHEMA = {
           requirements: { type: "string" },
           applyUrl: { type: "string", description: "Link to apply, or the brand's site. Empty if none in the post." },
           website: { type: "string", description: "Brand's domain only, e.g. makon.ai. Empty if not determinable from the post." },
+          contactHandle: { type: "string", description: "Discord username the post tells creators to DM, if it names one that isn't the poster. Empty otherwise." },
         },
         required: ["messageId", "isDeal", "brand", "title", "paySummary"],
       },
@@ -179,6 +180,7 @@ For the real ones:
 - maxMonthlyUsd: base pay times that ceiling, or the CPM equivalent at a realistic view count. This answers "what's this worth if I go all in", so be concrete but don't count the best-case view bonuses or one-off prizes — those aren't repeatable. 0 if you genuinely can't derive it.
 - requirements: who qualifies — audience tier, niche, follower count, demographic asks. Verbatim where it's specific.
 - website: the brand's own domain if the post makes it determinable. Not a Notion, Discord, Google Docs or form link — leave empty rather than guessing.
+- contactHandle: only if the post explicitly tells creators to DM someone other than whoever posted it. Leave empty otherwise — the poster is assumed.
 
 Available niches (use one exactly, or leave empty): ${NICHES.join(", ")}
 
@@ -223,6 +225,11 @@ Record everything by calling extract_deals.`;
         // The post's own image wins over a favicon — an attached brand
         // creative is a better thumbnail than a 128px icon.
         logo_url: source.imageUrl || logoFor(d.website, d.applyUrl),
+        // Who a creator actually messages to get this. Defaults to the
+        // poster, since these deals belong to campaign managers rather
+        // than to us — we are not the ones handing them out.
+        contact_discord_id: source.authorId || null,
+        contact_discord_username: nonEmpty(d.contactHandle) || source.authorName,
         posted_by_profile_id: profile.id,
         source_channel_id: source.channelId,
         discord_message_id: source.id,
@@ -241,5 +248,48 @@ Record everything by calling extract_deals.`;
     .select("id");
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  return NextResponse.json({ imported: inserted?.length || 0, remaining, scanned: messages.length, considered: fresh.length });
+  const merged = await collapseRepeatedBrands(admin, profile.organization_id);
+
+  return NextResponse.json({ imported: inserted?.length || 0, merged, remaining, scanned: messages.length, considered: fresh.length });
+}
+
+// A brand posts the same campaign more than once — a second hiring round, a
+// bumped repost, the same offer in both channels — and each one is a
+// separate Discord message, so each arrives as its own row. On the board
+// that reads as three Tapvid deals when there is one.
+//
+// Collapses to the newest post per brand. Soft-deleted rather than removed,
+// so the older terms are still recoverable and the message ids stay taken,
+// which is what stops the next sync re-extracting them.
+async function collapseRepeatedBrands(admin: ReturnType<typeof createAdminSupabaseClient>, organizationId: string): Promise<number> {
+  const { data } = await admin
+    .from("brand_opportunities")
+    .select("id, brand, posted_at, created_at")
+    .eq("organization_id", organizationId)
+    .is("deleted_at", null);
+
+  const newestByBrand = new Map<string, { id: string; when: string }>();
+  const supersededIds: string[] = [];
+
+  for (const row of data || []) {
+    const key = (row.brand || "").trim().toLowerCase();
+    if (!key) continue;
+    const when = row.posted_at || row.created_at || "";
+    const held = newestByBrand.get(key);
+    if (!held) {
+      newestByBrand.set(key, { id: row.id, when });
+    } else if (when > held.when) {
+      supersededIds.push(held.id);
+      newestByBrand.set(key, { id: row.id, when });
+    } else {
+      supersededIds.push(row.id);
+    }
+  }
+
+  if (supersededIds.length === 0) return 0;
+  await admin
+    .from("brand_opportunities")
+    .update({ deleted_at: new Date().toISOString() })
+    .in("id", supersededIds);
+  return supersededIds.length;
 }
