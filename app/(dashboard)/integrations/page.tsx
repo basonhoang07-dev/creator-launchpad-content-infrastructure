@@ -12,7 +12,6 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { ExternalLink, Plug } from "lucide-react";
 import { C } from "@/lib/theme";
 import { Card, Button, SectionHeader, Modal, Field, inputStyle } from "@/components/ui";
-import ExtensionKeyCard from "@/components/ExtensionKeyCard";
 import { createClient } from "@/lib/supabase";
 import { useDefaultScopedClientId } from "@/components/useDefaultClient";
 import { fetchIntegrations, toggleIntegration, EXTERNAL_TOOL_URLS, type IntegrationMeta } from "@/lib/queries/integrations";
@@ -168,7 +167,6 @@ function IntegrationsInner({ clientId }: { clientId: string }) {
     <div>
       <SectionHeader eyebrow="Connect your tools" title="Integrations" />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14 }}>
-        <ExtensionKeyCard clientId={clientId} />
         {integrations.map((i) => {
           const isExternal = EXTERNAL_TOOL_URLS[i.id];
           const isGoogleOAuth = i.id === "drive" || i.id === "gcal";
