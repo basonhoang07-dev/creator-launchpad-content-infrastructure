@@ -78,7 +78,7 @@ export default function LeadsPanel() {
       if (stage !== ALL && l.stage !== stage) return false;
       if (source !== ALL && l.sourceSlug !== source) return false;
       if (!q) return true;
-      return [l.firstName, l.email, l.phone, l.instagramHandle, l.notes, l.sourceSlug]
+      return [l.fullName, l.firstName, l.email, l.phone, l.instagramHandle, l.notes, l.sourceSlug]
         .some((f) => (f || "").toLowerCase().includes(q));
     });
   }, [leads, search, stage, source]);
@@ -97,7 +97,7 @@ export default function LeadsPanel() {
   }
 
   async function drop(lead: Lead) {
-    if (!confirm(`Remove ${lead.firstName} (${lead.email}) from the tracker?`)) return;
+    if (!confirm(`Remove ${lead.fullName || lead.firstName} (${lead.email}) from the tracker?`)) return;
     try {
       await removeLead(createClient(), lead.id);
       setLeads((prev) => (prev || []).filter((l) => l.id !== lead.id));
@@ -209,7 +209,7 @@ export default function LeadsPanel() {
                   </td>
 
                   <td style={cell}>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>{l.firstName}</div>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{l.fullName || l.firstName}</div>
                     <div style={{ fontSize: 11, color: C.textFaint }}>{l.email}</div>
                     {l.instagramHandle && (
                       <a
@@ -363,7 +363,11 @@ function SourcesModal({
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [error, setError] = useState("");
 
-  const linkFor = (slug: string) => `${FUNNEL_BASE}/?src=${encodeURIComponent(slug)}`;
+  // /get/<slug> rather than ?src=<slug>. netlify.toml serves it as a rewrite,
+  // so the slug stays in the address bar the whole way through — which is
+  // what makes attribution survive a refresh mid-funnel, and what makes the
+  // link worth putting in a bio.
+  const linkFor = (slug: string) => `${FUNNEL_BASE}/get/${encodeURIComponent(slug)}`;
 
   async function add() {
     if (!label.trim()) return;

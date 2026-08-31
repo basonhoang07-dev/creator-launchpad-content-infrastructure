@@ -84,12 +84,21 @@ export async function POST(req: NextRequest) {
     if (source?.destination_url) destination = source.destination_url;
   }
 
+  // The funnel now asks for both names. first_name stays for the greeting;
+  // full_name is what a caller reads off the sheet.
+  const fullName =
+    typeof body.full_name === "string" && body.full_name.trim().length >= 2
+      ? body.full_name.trim().replace(/\s+/g, " ").slice(0, 120)
+      : null;
+
   const { error } = await admin.from("leads").upsert(
     {
       organization_id: org.id,
       first_name: name.normalized,
+      full_name: fullName,
       email: email.normalized,
       phone: phone.normalized,
+      phone_e164: phone.normalized && phone.normalized.startsWith("+") ? phone.normalized : null,
       instagram_handle: typeof body.instagram_handle === "string" ? body.instagram_handle.trim().slice(0, 60) : null,
       ugc_goal: typeof body.ugc_goal === "string" ? body.ugc_goal.slice(0, 120) : null,
       experience_level: typeof body.experience_level === "string" ? body.experience_level.slice(0, 120) : null,

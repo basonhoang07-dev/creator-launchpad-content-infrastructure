@@ -17,6 +17,7 @@ export type LeadQuality = (typeof LEAD_QUALITIES)[number];
 export interface Lead {
   id: string;
   firstName: string;
+  fullName: string | null;
   email: string;
   phone: string | null;
   instagramHandle: string | null;
@@ -48,6 +49,7 @@ function mapLead(r: any): Lead {
   return {
     id: r.id,
     firstName: r.first_name,
+    fullName: r.full_name,
     email: r.email,
     phone: r.phone,
     instagramHandle: r.instagram_handle,
