@@ -32,9 +32,10 @@ import CheckInDetailModal from "@/components/CheckInDetailModal";
 import AccessModal from "@/components/admin/AccessModal";
 import RecapDeliveryPanel from "@/components/admin/RecapDeliveryPanel";
 import ViralFeedPanel from "@/components/admin/ViralFeedPanel";
+import LeadsPanel from "@/components/admin/LeadsPanel";
 import { useToast, toastMessage } from "@/components/Toast";
 
-type Tab = "accounts" | "checkins" | "recap" | "viralfeed" | "announcement" | "danger";
+type Tab = "accounts" | "checkins" | "recap" | "viralfeed" | "leads" | "announcement" | "danger";
 
 // The page itself had no role gate at all — a non-Admin who simply typed
 // /admin got the full component and whatever its own (mostly org-scoped,
@@ -233,6 +234,7 @@ function AdminPanelInner() {
             <Button variant={tab === "checkins" ? "primary" : "secondary"} size="sm" onClick={() => setTab("checkins")}>Check-ins</Button>
             <Button variant={tab === "recap" ? "primary" : "secondary"} size="sm" onClick={() => setTab("recap")}>Recap Delivery</Button>
             <Button variant={tab === "viralfeed" ? "primary" : "secondary"} size="sm" onClick={() => setTab("viralfeed")}>Viral Feed</Button>
+            <Button variant={tab === "leads" ? "primary" : "secondary"} size="sm" onClick={() => setTab("leads")}>Leads</Button>
             <Button variant={tab === "announcement" ? "primary" : "secondary"} size="sm" onClick={() => setTab("announcement")}>Announcement</Button>
             <Button variant={tab === "danger" ? "primary" : "secondary"} size="sm" onClick={() => setTab("danger")}>Danger Zone</Button>
           </div>
@@ -374,6 +376,8 @@ function AdminPanelInner() {
       {tab === "recap" && <RecapDeliveryPanel organizationId={profile.organization_id} />}
 
       {tab === "viralfeed" && <ViralFeedPanel />}
+
+      {tab === "leads" && <LeadsPanel />}
 
       {tab === "announcement" && (
         <Card>
