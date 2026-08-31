@@ -1,4 +1,6 @@
-# Creator Launchpad — browser extension
+# Auto Doomscroller
+
+The Creator Launchpad browser extension.
 
 Flags creators you already track while you scroll Instagram or TikTok, and
 saves any Reel or TikTok into Creator Launchpad on one click.

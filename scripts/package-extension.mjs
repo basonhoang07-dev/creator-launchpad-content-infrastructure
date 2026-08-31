@@ -1,4 +1,4 @@
-// Packages extension/ into public/creator-launchpad-extension.zip.
+// Packages extension/ into public/auto-doomscroller.zip.
 //
 // Committed as a built artifact rather than zipped on request: it's a
 // handful of static files that change only when the extension does, and
@@ -15,7 +15,7 @@ import { fileURLToPath } from "url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const src = resolve(root, "extension");
-const out = resolve(root, "public", "creator-launchpad-extension.zip");
+const out = resolve(root, "public", "auto-doomscroller.zip");
 
 if (!existsSync(src)) {
   console.error("No extension/ directory to package.");

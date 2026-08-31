@@ -73,10 +73,10 @@ export default function ExtensionKeyCard({ clientId }: { clientId: string | null
           <Puzzle size={17} color={C.accentLight} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 600, fontSize: 14 }}>Browser extension</div>
+          <div style={{ fontWeight: 600, fontSize: 14 }}>Auto Doomscroller</div>
           <div style={{ fontSize: 11.5, color: C.textFaint, lineHeight: 1.55, marginTop: 2 }}>
-            Flags creators you already track while you scroll Instagram or TikTok, and saves any video into your
-            calendar as a reference. Paste this key into the extension once.
+            The browser extension. Flags creators you already track as you scroll Instagram or TikTok, and saves any
+            video into your calendar as a reference. Paste this key into it once.
           </div>
         </div>
       </div>
@@ -111,8 +111,8 @@ export default function ExtensionKeyCard({ clientId }: { clientId: string | null
           than in a doc somewhere. */}
       <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 16, paddingTop: 14 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
-          <a href="/creator-launchpad-extension.zip" download style={{ textDecoration: "none" }}>
-            <Button size="sm"><Download size={13} /> Download the extension</Button>
+          <a href="/auto-doomscroller.zip" download style={{ textDecoration: "none" }}>
+            <Button size="sm"><Download size={13} /> Download Auto Doomscroller</Button>
           </a>
           <span style={{ fontSize: 11, color: C.textFaint }}>Chrome, Edge or Brave · about 6 KB</span>
         </div>

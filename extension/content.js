@@ -1,5 +1,5 @@
 /**
- * Creator Launchpad — content script.
+ * Auto Doomscroller — content script.
  *
  * Runs on Instagram and TikTok and does two things while you scroll: tells
  * you when the video in front of you is from a creator you already track,

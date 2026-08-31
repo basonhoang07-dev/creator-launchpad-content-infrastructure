@@ -1,15 +1,17 @@
 {
   "manifest_version": 3,
-  "name": "Creator Launchpad",
+  "name": "Auto Doomscroller",
   "version": "1.0.0",
-  "description": "Flags creators you already track while you scroll, and saves any Reel or TikTok straight into Creator Launchpad as a reference.",
-  "permissions": ["storage"],
+  "description": "Doomscroll with a purpose: flags creators you already track as you scroll Instagram and TikTok, and saves any Reel or TikTok into Creator Launchpad in one click.",
+  "permissions": [
+    "storage"
+  ],
   "host_permissions": [
     "https://creator-launchpad-content-infrastru.vercel.app/*"
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Creator Launchpad"
+    "default_title": "Auto Doomscroller"
   },
   "content_scripts": [
     {
@@ -19,8 +21,12 @@
         "https://www.tiktok.com/*",
         "https://tiktok.com/*"
       ],
-      "js": ["content.js"],
-      "css": ["content.css"],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "content.css"
+      ],
       "run_at": "document_idle"
     }
   ]
