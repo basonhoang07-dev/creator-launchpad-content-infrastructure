@@ -11,7 +11,7 @@
 // is what cuts it off.
 
 import React, { useCallback, useEffect, useState } from "react";
-import { Check, Copy, Eye, EyeOff, Puzzle, RefreshCw } from "lucide-react";
+import { Check, Copy, Download, Eye, EyeOff, Puzzle, RefreshCw } from "lucide-react";
 import { C } from "@/lib/theme";
 import { Card, Button, inputStyle } from "@/components/ui";
 import { useToast, toastMessage } from "@/components/Toast";
@@ -104,6 +104,33 @@ export default function ExtensionKeyCard({ clientId }: { clientId: string | null
       <div style={{ fontSize: 10.5, color: C.textFaint, marginTop: 10, lineHeight: 1.55 }}>
         Treat it like a password — anyone with it can save references into your account. Replacing it is how you cut off
         a copy you no longer control.
+      </div>
+
+      {/* The key is useless without the extension, and a client can't clone
+          the repo to get it — so the download and the steps live here rather
+          than in a doc somewhere. */}
+      <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 16, paddingTop: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+          <a href="/creator-launchpad-extension.zip" download style={{ textDecoration: "none" }}>
+            <Button size="sm"><Download size={13} /> Download the extension</Button>
+          </a>
+          <span style={{ fontSize: 11, color: C.textFaint }}>Chrome, Edge or Brave · about 6 KB</span>
+        </div>
+
+        <ol style={{ margin: 0, paddingLeft: 18, fontSize: 11.5, color: C.textMuted, lineHeight: 1.85 }}>
+          <li>Download the zip above and unzip it somewhere you won't delete.</li>
+          <li>
+            Open <span style={{ fontFamily: "ui-monospace, monospace", color: C.text }}>chrome://extensions</span> and
+            turn on <strong>Developer mode</strong>, top right.
+          </li>
+          <li>Click <strong>Load unpacked</strong> and choose the unzipped folder.</li>
+          <li>Click the extension's icon, paste your key from above, and hit Connect.</li>
+        </ol>
+
+        <div style={{ fontSize: 10.5, color: C.textFaint, marginTop: 10, lineHeight: 1.55 }}>
+          It reads the page you're already looking at and saves when you click. It never likes, follows, comments or
+          scrolls for you.
+        </div>
       </div>
     </Card>
   );
