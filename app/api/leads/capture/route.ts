@@ -18,8 +18,8 @@ import { validateEmailShape, validatePhone, validateName, domainAcceptsMail } fr
 // cross-origin. Listed explicitly rather than "*" — an open endpoint that
 // writes rows is an invitation to fill the call sheet with noise.
 const ALLOWED_ORIGINS = [
-  "https://creatorlaunchpad.netlify.app",
-  "https://www.creatorlaunchpad.netlify.app",
+  "https://creator-launch-pad-ugc-guide.netlify.app",
+  "https://www.creator-launch-pad-ugc-guide.netlify.app",
 ];
 
 function cors(origin: string | null): Record<string, string> {

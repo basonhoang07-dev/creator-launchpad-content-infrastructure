@@ -26,7 +26,7 @@ import {
 import { useToast, toastMessage } from "@/components/Toast";
 
 const ALL = "__all__";
-const FUNNEL_BASE = "https://creatorlaunchpad.netlify.app";
+const FUNNEL_BASE = "https://creator-launch-pad-ugc-guide.netlify.app";
 
 const STAGE_TONE: Record<LeadStage, "default" | "accent" | "success" | "warning"> = {
   New: "accent",
