@@ -12,7 +12,10 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
-import { validateEmailShape, validatePhone, validateName, domainAcceptsMail } from "@/lib/leadValidation";
+import {
+  validateEmailShape, validatePhone, validateName, domainAcceptsMail,
+  quizLabel, boundedInt,
+} from "@/lib/leadValidation";
 
 // The funnel is served from its own domain, so this is genuinely
 // cross-origin. Listed explicitly rather than "*" — an open endpoint that
@@ -104,6 +107,15 @@ export async function POST(req: NextRequest) {
       experience_level: typeof body.experience_level === "string" ? body.experience_level.slice(0, 120) : null,
       biggest_blocker: typeof body.biggest_blocker === "string" ? body.biggest_blocker.slice(0, 120) : null,
       followers_band: typeof body.followers_band === "string" ? body.followers_band.slice(0, 60) : null,
+
+      // Added with the six-question quiz. See migration 024.
+      country: quizLabel(body.country, 80),
+      country_iso: quizLabel(body.country_iso, 8),
+      market_tier: boundedInt(body.market_tier, 1, 3),
+      income_band: quizLabel(body.income_band, 60),
+      budget_band: quizLabel(body.budget_band, 60),
+      hours_band: quizLabel(body.hours_band, 60),
+      entry_phase: boundedInt(body.entry_phase, 1, 3),
       source_slug: sourceSlug,
       landing_url: typeof body.landing_url === "string" ? body.landing_url.slice(0, 500) : null,
     },

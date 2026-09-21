@@ -21,6 +21,29 @@
 
 import { promises as dns } from "dns";
 
+// The quiz answers, as the labels the funnel displayed rather than its
+// internal codes. Trimmed and capped rather than checked against a list: the
+// funnel owns its own wording, and rejecting an answer because a label got
+// reworded would drop a real lead over a copy change.
+export function quizLabel(input: unknown, max = 120): string | null {
+  if (typeof input !== "string") return null;
+  const v = input.trim().replace(/\s+/g, " ");
+  return v ? v.slice(0, max) : null;
+}
+
+// Market tier and entry phase are both 1-3. Anything else means the funnel
+// has drifted from this route, and a null is more honest on a call sheet
+// than a number nobody can explain.
+//
+// Booleans are rejected explicitly: Number(true) is 1, which would otherwise
+// sail through as a valid tier.
+export function boundedInt(input: unknown, min: number, max: number): number | null {
+  if (typeof input !== "number" && typeof input !== "string") return null;
+  if (typeof input === "string" && !input.trim()) return null;
+  const n = Number(input);
+  return Number.isInteger(n) && n >= min && n <= max ? n : null;
+}
+
 export interface ValidationResult {
   ok: boolean;
   // Written to be shown to the person typing, not logged — it has to tell
@@ -126,6 +149,37 @@ export async function domainAcceptsMail(email: string): Promise<boolean> {
 // Phone. Deliberately loose on format and strict on substance: people write
 // numbers a dozen ways and any of them is fine, but the digits underneath
 // have to be capable of being a real number.
+// The shapes people produce when they don't want to give a real number.
+// Applied to a bare run of digits with no country code in front of it.
+//
+// checkSequences is off for short candidates because this runs against the
+// number with one, two and three leading digits chopped off, and a short
+// enough tail of a real number can look like counting: +61 412 345 678 is an
+// ordinary Australian mobile whose last eight digits are "12345678". Nine is
+// where a run stops being a coincidence.
+function looksInvented(digits: string, checkSequences: boolean): boolean {
+  // All one digit: 1111111, 0000000.
+  if (/^(\d)\1+$/.test(digits)) return true;
+
+  // The numbers everyone reaches for when inventing one. These are specific
+  // enough to be safe on a shortened candidate — 555-1234 is the reserved
+  // fictional range, and no real tail counts 1231231.
+  if (/^(5{7,}|5551234|1231231|0000000)/.test(digits)) return true;
+
+  // 1234567890 and its reverse, in any length. Nobody's number counts up.
+  // "1234567" lives here rather than with the fixed shapes above because it
+  // is just counting, and counting is exactly what a chopped-down real
+  // number can accidentally look like.
+  if (checkSequences) {
+    const ascending = "01234567890123456789";
+    const descending = "98765432109876543210";
+    if (ascending.includes(digits) || descending.includes(digits)) return true;
+    if (/^1234567/.test(digits)) return true;
+  }
+
+  return false;
+}
+
 export function validatePhone(input: string): ValidationResult {
   const raw = (input || "").trim();
   if (!raw) return { ok: false, error: "Enter your phone number." };
@@ -136,17 +190,22 @@ export function validatePhone(input: string): ValidationResult {
   if (digits.length < 7) return { ok: false, error: "That number looks too short." };
   if (digits.length > 15) return { ok: false, error: "That number looks too long." };
 
-  if (/^(\d)\1+$/.test(digits)) return { ok: false, error: "Enter your real phone number." };
-
-  // 1234567890 and its reverse, in any length. Nobody's number counts up.
-  const ascending = "01234567890123456789";
-  const descending = "98765432109876543210";
-  if (ascending.includes(digits) || descending.includes(digits)) {
-    return { ok: false, error: "Enter your real phone number." };
-  }
-
-  // The numbers everyone reaches for when inventing one.
-  if (/^(5{7,}|1234567|5551234|1231231|0000000)/.test(digits)) {
+  // Every junk rule below has to be tried against the national part as well
+  // as the whole string. The funnel submits E.164 now, so "+91 111111"
+  // arrives as 91111111 — not a repeated digit, not a sequence, and not
+  // matching an anchored prefix, so all three checks would wave it through.
+  // Stripping one, two and three leading digits covers every dial code
+  // without keeping a table of them.
+  // The whole string keeps the original rules. The three shortened forms are
+  // the country code being stripped without needing a table of dial codes,
+  // and they only get the sequence rule once they are long enough for a run
+  // to mean something.
+  const junk =
+    looksInvented(digits, true) ||
+    [digits.slice(1), digits.slice(2), digits.slice(3)]
+      .filter((d) => d.length >= 6)
+      .some((d) => looksInvented(d, d.length >= 9));
+  if (junk) {
     return { ok: false, error: "Enter your real phone number." };
   }
 

@@ -50,6 +50,7 @@ export default function LeadsPanel() {
   const [search, setSearch] = useState("");
   const [stage, setStage] = useState(ALL);
   const [source, setSource] = useState(ALL);
+  const [tier, setTier] = useState(ALL);
   const [showSources, setShowSources] = useState(false);
   const [error, setError] = useState("");
 
@@ -77,11 +78,14 @@ export default function LeadsPanel() {
     return (leads || []).filter((l) => {
       if (stage !== ALL && l.stage !== stage) return false;
       if (source !== ALL && l.sourceSlug !== source) return false;
+      // Leads captured before the six-question quiz have no tier at all, so
+      // they are only hidden when a specific tier is being asked for.
+      if (tier !== ALL && String(l.marketTier ?? "") !== tier) return false;
       if (!q) return true;
-      return [l.fullName, l.firstName, l.email, l.phone, l.instagramHandle, l.notes, l.sourceSlug]
+      return [l.fullName, l.firstName, l.email, l.phone, l.instagramHandle, l.notes, l.sourceSlug, l.country]
         .some((f) => (f || "").toLowerCase().includes(q));
     });
-  }, [leads, search, stage, source]);
+  }, [leads, search, stage, source, tier]);
 
   // Edits are written straight through and the row is patched locally rather
   // than refetching — a dropdown that reorders the table under your cursor
@@ -157,6 +161,12 @@ export default function LeadsPanel() {
               <option key={s.id} value={s.slug}>{s.label}</option>
             ))}
           </select>
+          <select style={selectStyle} value={tier} onChange={(e) => setTier(e.target.value)}>
+            <option value={ALL}>All markets</option>
+            <option value="1">T1 only</option>
+            <option value="2">T2</option>
+            <option value="3">T3</option>
+          </select>
           <span style={{ marginLeft: "auto", fontSize: 11.5, color: C.textFaint }}>
             {filtered.length} of {leads.length}
           </span>
@@ -180,7 +190,7 @@ export default function LeadsPanel() {
         />
       ) : (
         <Card style={{ padding: 16, overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1080 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1320 }}>
             <thead>
               <tr>
                 <th style={head}>DIALED</th>
@@ -190,6 +200,8 @@ export default function LeadsPanel() {
                 <th style={head}>STAGE</th>
                 <th style={head}>SOURCE</th>
                 <th style={head}>QUALITY</th>
+                <th style={head}>MARKET</th>
+                <th style={head}>MONEY / TIME</th>
                 <th style={head}>GOAL / LEVEL</th>
                 <th style={{ ...head, minWidth: 220 }}>PRE-CALL NOTE</th>
                 <th style={head} />
@@ -271,10 +283,26 @@ export default function LeadsPanel() {
                     </select>
                   </td>
 
+                  <td style={cell}>
+                    <MarketCell lead={l} />
+                  </td>
+
+                  <td style={{ ...cell, fontSize: 11, color: C.textMuted, lineHeight: 1.55, whiteSpace: "nowrap" }}>
+                    {l.incomeBand ? <div>Earns {l.incomeBand}</div> : null}
+                    {l.budgetBand ? <div style={{ color: C.textFaint }}>Can spend {l.budgetBand}</div> : null}
+                    {l.hoursBand ? <div style={{ color: C.textFaint }}>{l.hoursBand}</div> : null}
+                    {!l.incomeBand && !l.budgetBand && !l.hoursBand && (
+                      <span style={{ color: C.textFaint }}>—</span>
+                    )}
+                  </td>
+
                   <td style={{ ...cell, fontSize: 11, color: C.textMuted, lineHeight: 1.5, maxWidth: 170 }}>
                     {l.ugcGoal || "—"}
                     {l.experienceLevel && <div style={{ color: C.textFaint }}>{l.experienceLevel}</div>}
                     {l.biggestBlocker && <div style={{ color: C.textFaint }}>Stuck on: {l.biggestBlocker}</div>}
+                    {l.entryPhase && (
+                      <div style={{ color: C.accentLight, marginTop: 2 }}>Roadmap opens at Phase {l.entryPhase}</div>
+                    )}
                   </td>
 
                   <td style={cell}>
@@ -305,6 +333,23 @@ export default function LeadsPanel() {
           onClose={() => setShowSources(false)}
           onChanged={reload}
         />
+      )}
+    </div>
+  );
+}
+
+// Where they are, and whether the roadmap's numbers apply to them.
+//
+// T1 is the unremarkable case and gets no badge — the whole point is that a
+// tier badge means "do not open by quoting the rates in the roadmap", so
+// badging everyone would bury the one row that needed flagging.
+function MarketCell({ lead }: { lead: Lead }) {
+  if (!lead.country) return <span style={{ fontSize: 11, color: C.textFaint }}>—</span>;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "flex-start" }}>
+      <span style={{ fontSize: 12, color: C.text, whiteSpace: "nowrap" }}>{lead.country}</span>
+      {lead.marketTier != null && lead.marketTier > 1 && (
+        <Badge tone="warning">T{lead.marketTier} &middot; not T1 rates</Badge>
       )}
     </div>
   );

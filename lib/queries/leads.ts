@@ -25,6 +25,17 @@ export interface Lead {
   experienceLevel: string | null;
   biggestBlocker: string | null;
   followersBand: string | null;
+
+  // From the six-question quiz. marketTier is 1-3: the roadmap quotes T1
+  // rates, so anything above 1 is a flag not to open with those numbers.
+  country: string | null;
+  countryIso: string | null;
+  marketTier: number | null;
+  incomeBand: string | null;
+  budgetBand: string | null;
+  hoursBand: string | null;
+  entryPhase: number | null;
+
   sourceSlug: string | null;
   stage: LeadStage;
   quality: LeadQuality | null;
@@ -57,6 +68,13 @@ function mapLead(r: any): Lead {
     experienceLevel: r.experience_level,
     biggestBlocker: r.biggest_blocker,
     followersBand: r.followers_band,
+    country: r.country,
+    countryIso: r.country_iso,
+    marketTier: r.market_tier,
+    incomeBand: r.income_band,
+    budgetBand: r.budget_band,
+    hoursBand: r.hours_band,
+    entryPhase: r.entry_phase,
     sourceSlug: r.source_slug,
     stage: r.stage,
     quality: r.quality,
