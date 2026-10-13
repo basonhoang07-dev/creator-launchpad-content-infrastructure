@@ -16,7 +16,7 @@ The first column is the score field: the exact key to use in the verdict JSON.
 | score field | weight | the question |
 | --- | --- | --- |
 | pillar_fit | 30 | **Brand pillar fit.** Does each idea clearly map to ONE pillar in pillars.md? A stretch, or an idea that fits no pillar, scores low. |
-| hook | 25 | **Hook strength.** Would a coach doing $20–50K/month stop scrolling in the first 3 seconds? Specific and tense beats generic. |
+| hook | 25 | **Hook strength.** Would a coach doing $20-50K/month stop scrolling in the first 3 seconds? Specific and tense beats generic. |
 | proof | 20 | **Proof.** Is it grounded in a real quote or moment from the call? Any invented claim, stat or quote is a FATAL flaw. |
 | icp_pain | 15 | **ICP pain.** Does it name a specific problem B2B coaches/founders actually have, not generic motivation? |
 | clip_ability | 10 | **Clip-ability.** Can it be used straight from the real call footage? Needing a full re-script scores lower. |
@@ -35,13 +35,13 @@ Use the whole scale. A 7 is not a polite default.
 - 0 to 2: the ideas fit no pillar, or contradict one (for example flexing, or pitching TOFU/MOFU/BOFU).
 
 **Hook strength** (`hook`)
-- 10: every hook is specific and tense: a coach at $20–50K/month would stop in the first 3 seconds.
+- 10: every hook is specific and tense: a coach at $20-50K/month would stop in the first 3 seconds.
 - 7: strong overall, with one generic hook.
 - 4: mostly generic hooks that could open anyone's video.
 - 0 to 2: no real hook, or it opens on a slow setup.
 
 **ICP pain** (`icp_pain`)
-- 10: each idea names a concrete problem B2B coaches/founders ($20K–100K/month) actually have.
+- 10: each idea names a concrete problem B2B coaches/founders ($20K-100K/month) actually have.
 - 7: mostly concrete, one idea drifts into general motivation.
 - 4: a lot of generic "mindset" or "hustle" with no named problem.
 - 0 to 2: aimed at the wrong audience, or no problem at all.

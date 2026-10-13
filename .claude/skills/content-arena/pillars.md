@@ -12,4 +12,4 @@ Main message: running a business with a partner is more fun, less work, faster s
 8. Sale process: rapport → qualify → pain dig → pitch with a real case study; ban-proof DMs
 9. AI automation: automate the bottleneck, not the business; AI script director helps, doesn't write
 
-Audience: B2B coaches/founders ($20K–100K/month) who want content that converts, not just views.
+Audience: B2B coaches/founders ($20K-100K/month) who want content that converts, not just views.
