@@ -15,3 +15,7 @@
 .DS_Store
 *.pem
 npm-debug.log*
+
+# content-arena run state
+.arena/
+__pycache__/
