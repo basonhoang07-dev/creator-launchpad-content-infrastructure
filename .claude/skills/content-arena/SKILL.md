@@ -4,6 +4,7 @@ description: >-
   Judges a shortlist of content ideas from coaching calls against Akira's brand
   pillars and returns the strongest ones. Use when Akira asks to judge, rank or
   pressure-test content ideas or hooks.
+disable-model-invocation: true
 argument-hint: "[--agents N | --quick] [--seed S] <task>"
 ---
 
